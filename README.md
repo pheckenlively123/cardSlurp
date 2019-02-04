@@ -4,6 +4,7 @@ and as safely as possible.
 
 cardSlurp uses the flags package, so it understands the -h option.
 
+<pre>
 $ ./cardSlurp -h
 Usage of ./cardSlurp:
   -debugMode
@@ -14,4 +15,4 @@ Usage of ./cardSlurp:
         String to distinguish cards from other mounted media in mountDir.
   -targetDir string
         Target directory for the copied files.
-
+</pre>
