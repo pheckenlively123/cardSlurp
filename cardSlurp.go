@@ -270,10 +270,10 @@ func recurseDir(fullPath string, foundFiles *[]foundFileStr) {
 // would probably be portable to MacOS, because it is based on BSD
 // UNIX.  I don't think it would be portable to Windoze.
 
-//I also considered using uuids for generating unique names.  It would
-//have worked without all the fun of channeling all the threads
-//through the goroutine below.  The downside would have been filenames
-//that differed significantly from the names on the cards.
+// I also considered using uuids for generating unique names.  It
+// would have worked without all the fun of channeling all the threads
+// through the goroutine below.  The downside would have been
+// filenames that differed significantly from the names on the cards.
 func targetNameGen(getTargetQueue chan getFileNameMsg) {
 
 	// Need to track what has been given for file names, so we can
