@@ -1,0 +1,2 @@
+- Break the monolith into separate packages.
+- Write tests for each of the packags.
