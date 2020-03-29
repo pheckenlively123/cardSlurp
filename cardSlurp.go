@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -15,12 +17,9 @@ type finishMsg struct {
 	errors   []string
 }
 
-// Not thrilled about passing the entire file through the channel, but
-// I can't think of a way for the target name goroutine to determine
-// if a target file is the same otherwise.
 type getFileNameMsg struct {
 	leafName string
-	leafData []byte
+	fullName string
 	callback chan returnFileNameMsg
 }
 
@@ -43,6 +42,8 @@ var searchStr = flag.String("searchStr", "",
 	"String to distinguish cards from other mounted media in mountDir.")
 var debugMode = flag.Bool("debugMode", false,
 	"Print extra debug information.")
+var transBuff = flag.Int("transBuff", 8192,
+	"Transfer buffer size.")
 
 func init() {
 	flag.Parse()
@@ -104,9 +105,8 @@ func main() {
 		summary = append(summary, finishResult)
 	}
 
-
 	errorFlag := false
-	
+
 	// Print the summary results.
 	for x := range summary {
 
@@ -147,17 +147,12 @@ func locateFiles(fullPath string, doneMsg chan finishMsg,
 		f := foundFiles[x]
 
 		sourceFile := f.fullPath + "/" + f.leafName
-		sourceData, err1 := ioutil.ReadFile(sourceFile)
-		if err1 != nil {
-			retVal.errors = append(retVal.errors,
-				"Error reading "+f.fullPath+"/"+f.leafName)
-			continue
-		}
 
 		targFileMsg := new(getFileNameMsg)
 		targFileMsg.callback = make(chan returnFileNameMsg)
 		targFileMsg.leafName = f.leafName
-		targFileMsg.leafData = sourceData
+		targFileMsg.fullName = sourceFile
+		//targFileMsg.leafData = sourceData
 
 		getTargetQueue <- *targFileMsg
 
@@ -174,40 +169,31 @@ func locateFiles(fullPath string, doneMsg chan finishMsg,
 			continue
 		}
 
-		// If we got this far, then we have a save name, and
-		// the file isn't already saved into the target
-		// directory.
-		// Make sure the target
-		targFile := callBackMsg.writeLeafName
-		err2 := ioutil.WriteFile(targFile, sourceData, f.leafMode)
-		if err2 != nil {
-
+		_, err := nibbleCopy(sourceFile,
+			callBackMsg.writeLeafName)
+		if err != nil {
 			retVal.errors = append(retVal.errors,
-				"Error writing: "+targFile)
+				"Error copying: "+sourceFile)
+			fmt.Print("Error copying: " + sourceFile)
 			continue
 		}
 
-		// If we got this far, we have written the image to
-		// disk.  Time to make sure what we wrote matches what
-		// was read from the card.
-		readBack, err3 := ioutil.ReadFile(targFile)
-		if err3 != nil {
-
+		sameStat, err := isFileSame(sourceFile,
+			callBackMsg.writeLeafName)
+		if err != nil {
 			retVal.errors = append(retVal.errors,
-				"Error reading back: "+targFile)
+				"Error checking files are same: "+sourceFile)
+			fmt.Print("Error verifying copy for: " + sourceFile)
 			continue
-
 		}
 
-		if isFileSame(sourceData, readBack) {
+		if sameStat {
 			retVal.copied++
 			fmt.Printf("%s/%s - Done\n", f.fullPath, f.leafName)
 		} else {
 			retVal.errors = append(retVal.errors,
-				"File does not match what was written: %s",
-				targFile)
+				"file verification did not match for: "+sourceFile)
 		}
-
 	}
 
 	// Let the main routine know we are done.
@@ -295,10 +281,10 @@ func targetNameGen(getTargetQueue chan getFileNameMsg) {
 		var tryName string
 
 		// Loop until we have a valid target name
-		for i := 0; i < 999999; i++ {
+		for i := 0; i < 10000; i++ {
 
 			// Failsafe
-			if i == 999998 {
+			if i == 9999 {
 				panic("Error renaming:" + request.leafName)
 			}
 
@@ -346,20 +332,20 @@ func targetNameGen(getTargetQueue chan getFileNameMsg) {
 				// the same as the one I'm trying to
 				// write.
 
-				tryData, err2 := ioutil.ReadFile(tryName)
-				if err2 != nil {
-					panic("Failed to read: " + tryName)
+				sameStat, err := isFileSame(tryName,
+					request.fullName)
+				if err != nil {
+					// May not be best option, but
+					// at least I will know
+					// something went wrong.
+					panic("Failed to get same status.")
 				}
 
-				if isFileSame(tryData, request.leafData) {
-					// Tell the caller to skip the write.
+				if sameStat {
 					callbackMsg.writeLeafName = tryName
 					callbackMsg.skipFlag = true
 					targMap[tryName] = true
 					break
-				} else {
-					// This filename is taken.  Find another.
-					continue
 				}
 			}
 		}
@@ -369,17 +355,114 @@ func targetNameGen(getTargetQueue chan getFileNameMsg) {
 	}
 }
 
-func isFileSame(thingOne []byte, thingTwo []byte) bool {
+// Do a byte by byte comparison of the two files.
+func isFileSame(thingOne string, thingTwo string) (bool, error) {
 
-	if len(thingOne) != len(thingTwo) {
-		return false
+	from, err := os.Open(thingOne)
+	if err != nil {
+		return false, errors.New("Error opening: " + thingOne)
 	}
+	defer from.Close()
 
-	for x := range thingOne {
-		if thingOne[x] != thingTwo[x] {
-			return false
+	to, err := os.Open(thingTwo)
+	if err != nil {
+		return false, errors.New("Error opening: " + thingTwo)
+	}
+	defer to.Close()
+
+	nibFrom := make([]byte, *transBuff)
+	nibTo := make([]byte, *transBuff)
+
+	for {
+		readFrom, errFrom := from.Read(nibFrom)
+		readTo, errTo := to.Read(nibTo)
+
+		if (errFrom == io.EOF) && (errTo == io.EOF) {
+			break
+		}
+
+		if readFrom != readTo {
+			return false, nil
+		}
+
+		for x := range nibFrom {
+			if nibFrom[x] != nibTo[x] {
+				return false, nil
+			}
+		}
+
+		// One of the files finished before the other.
+		if errFrom == io.EOF {
+			return false, nil
+		}
+
+		// One of the files finished before the other.
+		if errTo == io.EOF {
+			return false, nil
+		}
+
+		// Process any weird errors.
+		if errFrom != nil {
+			return false, errFrom
+		}
+
+		// Process any weird errors.
+		if errTo != nil {
+			return false, errTo
 		}
 	}
 
-	return true
+	return true, nil
+}
+
+// Copy the file located at thingOne to location thingTwo.
+func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
+
+	from, err := os.Open(thingOne)
+	if err != nil {
+		return false, errors.New("Error opening: " + thingOne)
+	}
+	defer from.Close()
+
+	to, err := os.OpenFile(thingTwo, os.O_RDWR|os.O_CREATE, 0755)
+	if err != nil {
+		return false, errors.New("Error opening: " + thingTwo)
+	}
+	defer to.Close()
+
+	nibble := make([]byte, *transBuff)
+	
+	for {
+		byteRead, errFrom := from.Read(nibble)
+
+		if errFrom != nil {
+			return false, errFrom
+		}
+
+		// Write the last block of bytes one at a time.
+		if byteRead < *transBuff {
+			tag := make([]byte, byteRead)
+			
+			for i := 0 ; i < byteRead ; i++ {
+				tag[i] = nibble[i]
+			}
+			
+			_, errTag := to.Write(tag)
+			if errTag != nil {
+				return false, errTag
+			}
+			break
+		}
+		
+		_, errTo := to.Write(nibble)
+		if errTo != nil {
+			return false, errTo
+		}
+
+		if ( errFrom == io.EOF ) || (  byteRead < *transBuff )  {
+			break
+		}
+	}
+
+	return true, nil
 }
