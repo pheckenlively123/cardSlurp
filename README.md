@@ -15,6 +15,8 @@ Usage of ./cardSlurp:
         String to distinguish cards from other mounted media in mountDir.
   -targetDir string
         Target directory for the copied files.
+  -transBuff int
+    	Transfer buffer size. (default 8192)
 </pre>
 
 Here is a usage example.  (Yes, the author shoots Canon, for what it
