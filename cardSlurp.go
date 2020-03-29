@@ -355,6 +355,7 @@ func targetNameGen(getTargetQueue chan getFileNameMsg) {
 	}
 }
 
+// Do a byte by byte comparison of the two files.
 func isFileSame(thingOne string, thingTwo string) (bool, error) {
 
 	from, err := os.Open(thingOne)
@@ -414,8 +415,7 @@ func isFileSame(thingOne string, thingTwo string) (bool, error) {
 	return true, nil
 }
 
-// Copy the file located at thingOne to location thingTwo, and verify
-// that the copy was successful.
+// Copy the file located at thingOne to location thingTwo.
 func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 
 	from, err := os.Open(thingOne)
