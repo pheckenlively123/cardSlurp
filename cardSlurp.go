@@ -370,8 +370,8 @@ func isFileSame(thingOne string, thingTwo string) (bool, error) {
 	defer to.Close()
 
 	for {
-		nibFrom := make([]byte, 1024)
-		nibTo := make([]byte, 1024)
+		nibFrom := make([]byte, 4096)
+		nibTo := make([]byte, 4096)
 
 		readFrom, errFrom := from.Read(nibFrom)
 		readTo, errTo := to.Read(nibTo)
@@ -431,7 +431,7 @@ func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 	defer to.Close()
 
 	for {
-		nibble := make([]byte, 1024)
+		nibble := make([]byte, 4096)
 		byteRead, errFrom := from.Read(nibble)
 
 		if errFrom != nil {
@@ -439,7 +439,7 @@ func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 		}
 
 		// Write the last block of bytes one at a time.
-		if byteRead < 1024 {
+		if byteRead < 4096 {
 			tag := make([]byte, byteRead)
 			
 			for i := 0 ; i < byteRead ; i++ {
@@ -458,7 +458,7 @@ func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 			return false, errTo
 		}
 
-		if ( errFrom == io.EOF ) || (  byteRead < 1024 )  {
+		if ( errFrom == io.EOF ) || (  byteRead < 4096 )  {
 			break
 		}
 	}
