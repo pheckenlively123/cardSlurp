@@ -1,7 +1,6 @@
 package main
 
 import (
-	//	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,7 +20,6 @@ type finishMsg struct {
 type getFileNameMsg struct {
 	leafName string
 	fullName string
-	//	leafData []byte
 	callback chan returnFileNameMsg
 }
 
@@ -44,6 +42,8 @@ var searchStr = flag.String("searchStr", "",
 	"String to distinguish cards from other mounted media in mountDir.")
 var debugMode = flag.Bool("debugMode", false,
 	"Print extra debug information.")
+var transBuff = flag.Int("transBuff", 8192,
+	"Transfer buffer size.")
 
 func init() {
 	flag.Parse()
@@ -369,10 +369,10 @@ func isFileSame(thingOne string, thingTwo string) (bool, error) {
 	}
 	defer to.Close()
 
-	for {
-		nibFrom := make([]byte, 4096)
-		nibTo := make([]byte, 4096)
+	nibFrom := make([]byte, *transBuff)
+	nibTo := make([]byte, *transBuff)
 
+	for {
 		readFrom, errFrom := from.Read(nibFrom)
 		readTo, errTo := to.Read(nibTo)
 
@@ -430,8 +430,9 @@ func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 	}
 	defer to.Close()
 
+	nibble := make([]byte, *transBuff)
+	
 	for {
-		nibble := make([]byte, 4096)
 		byteRead, errFrom := from.Read(nibble)
 
 		if errFrom != nil {
@@ -439,7 +440,7 @@ func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 		}
 
 		// Write the last block of bytes one at a time.
-		if byteRead < 4096 {
+		if byteRead < *transBuff {
 			tag := make([]byte, byteRead)
 			
 			for i := 0 ; i < byteRead ; i++ {
@@ -458,7 +459,7 @@ func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
 			return false, errTo
 		}
 
-		if ( errFrom == io.EOF ) || (  byteRead < 4096 )  {
+		if ( errFrom == io.EOF ) || (  byteRead < *transBuff )  {
 			break
 		}
 	}
