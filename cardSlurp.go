@@ -1,10 +1,9 @@
 package main
 
 import (
-	"errors"
+	"cardSlurp/card_file_util"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -90,7 +89,7 @@ func main() {
 
 			fmt.Printf("Found match: %s\n", fullPath)
 
-			// Spawn a thread to extract each card at the
+			// Spawn a thread to offload each card at the
 			// same time.
 			go locateFiles(fullPath, doneQueue, getTargetQueue)
 			foundCount++
@@ -169,8 +168,7 @@ func locateFiles(fullPath string, doneMsg chan finishMsg,
 			continue
 		}
 
-		_, err := nibbleCopy(sourceFile,
-			callBackMsg.writeLeafName)
+		_, err := card_file_util.NibbleCopy(sourceFile, callBackMsg.writeLeafName, *transBuff)
 		if err != nil {
 			retVal.errors = append(retVal.errors,
 				"Error copying: "+sourceFile)
@@ -178,8 +176,7 @@ func locateFiles(fullPath string, doneMsg chan finishMsg,
 			continue
 		}
 
-		sameStat, err := isFileSame(sourceFile,
-			callBackMsg.writeLeafName)
+		sameStat, err := card_file_util.IsFileSame(sourceFile, callBackMsg.writeLeafName, *transBuff)
 		if err != nil {
 			retVal.errors = append(retVal.errors,
 				"Error checking files are same: "+sourceFile)
@@ -243,23 +240,22 @@ func recurseDir(fullPath string, foundFiles *[]foundFileStr) {
 	}
 }
 
-// Wait for the card processors to request filenames.  Perhaps look at
-// adding some directions to my channel below, just to make it obvious
-// what is going on, and to provide some type safety.
+// Wait for the card processors to request filenames.  Perhaps look at adding
+// some directions to my channel below, just to make it obvious what is going
+// on, and to provide some type safety.
 
-// This approach is careful, but not full proof.  If something else is
-// writing to the target directory, this program could still overwrite
-// it.  However, it will step around anything that is already there.
-// It is also aware of any files it has blessed for writing.  A
-// foolproof way to make sure we have a unique name would be to use
-// the system open with excusive and create flags.  That approach
-// would probably be portable to MacOS, because it is based on BSD
+// This approach is careful, but not full proof.  If something else is writing
+// to the target directory, this program could still overwrite it.  However, it
+// will step around anything that is already there. It is also aware of any
+// files it has blessed for writing.  A foolproof way to make sure we have a
+// unique name would be to use the system open with excusive and create flags.
+// That approach would probably be portable to MacOS, because it is based on BSD
 // UNIX.  I don't think it would be portable to Windoze.
 
-// I also considered using uuids for generating unique names.  It
-// would have worked without all the fun of channeling all the threads
-// through the goroutine below.  The downside would have been
-// filenames that differed significantly from the names on the cards.
+// I also considered using uuids for generating unique names.  It would have
+// worked without all the fun of channeling all the threads through the
+// goroutine below.  The downside would have been filenames that differed
+// significantly from the names on the cards.
 func targetNameGen(getTargetQueue chan getFileNameMsg) {
 
 	// Need to track what has been given for file names, so we can
@@ -332,8 +328,7 @@ func targetNameGen(getTargetQueue chan getFileNameMsg) {
 				// the same as the one I'm trying to
 				// write.
 
-				sameStat, err := isFileSame(tryName,
-					request.fullName)
+				sameStat, err := card_file_util.IsFileSame(tryName, request.fullName, *transBuff)
 				if err != nil {
 					// May not be best option, but
 					// at least I will know
@@ -353,116 +348,4 @@ func targetNameGen(getTargetQueue chan getFileNameMsg) {
 		// The send back the result.
 		request.callback <- *callbackMsg
 	}
-}
-
-// Do a byte by byte comparison of the two files.
-func isFileSame(thingOne string, thingTwo string) (bool, error) {
-
-	from, err := os.Open(thingOne)
-	if err != nil {
-		return false, errors.New("Error opening: " + thingOne)
-	}
-	defer from.Close()
-
-	to, err := os.Open(thingTwo)
-	if err != nil {
-		return false, errors.New("Error opening: " + thingTwo)
-	}
-	defer to.Close()
-
-	nibFrom := make([]byte, *transBuff)
-	nibTo := make([]byte, *transBuff)
-
-	for {
-		readFrom, errFrom := from.Read(nibFrom)
-		readTo, errTo := to.Read(nibTo)
-
-		if (errFrom == io.EOF) && (errTo == io.EOF) {
-			break
-		}
-
-		if readFrom != readTo {
-			return false, nil
-		}
-
-		for x := range nibFrom {
-			if nibFrom[x] != nibTo[x] {
-				return false, nil
-			}
-		}
-
-		// One of the files finished before the other.
-		if errFrom == io.EOF {
-			return false, nil
-		}
-
-		// One of the files finished before the other.
-		if errTo == io.EOF {
-			return false, nil
-		}
-
-		// Process any weird errors.
-		if errFrom != nil {
-			return false, errFrom
-		}
-
-		// Process any weird errors.
-		if errTo != nil {
-			return false, errTo
-		}
-	}
-
-	return true, nil
-}
-
-// Copy the file located at thingOne to location thingTwo.
-func nibbleCopy(thingOne string, thingTwo string) (bool, error) {
-
-	from, err := os.Open(thingOne)
-	if err != nil {
-		return false, errors.New("Error opening: " + thingOne)
-	}
-	defer from.Close()
-
-	to, err := os.OpenFile(thingTwo, os.O_RDWR|os.O_CREATE, 0755)
-	if err != nil {
-		return false, errors.New("Error opening: " + thingTwo)
-	}
-	defer to.Close()
-
-	nibble := make([]byte, *transBuff)
-	
-	for {
-		byteRead, errFrom := from.Read(nibble)
-
-		if errFrom != nil {
-			return false, errFrom
-		}
-
-		// Write the last block of bytes one at a time.
-		if byteRead < *transBuff {
-			tag := make([]byte, byteRead)
-			
-			for i := 0 ; i < byteRead ; i++ {
-				tag[i] = nibble[i]
-			}
-			
-			_, errTag := to.Write(tag)
-			if errTag != nil {
-				return false, errTag
-			}
-			break
-		}
-		
-		_, errTo := to.Write(nibble)
-		if errTo != nil {
-			return false, errTo
-		}
-
-		if ( errFrom == io.EOF ) || (  byteRead < *transBuff )  {
-			break
-		}
-	}
-
-	return true, nil
 }
