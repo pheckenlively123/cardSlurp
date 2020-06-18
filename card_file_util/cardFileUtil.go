@@ -84,9 +84,15 @@ func NibbleCopy(thingOne string, thingTwo string, transBuff int) (bool, error) {
 	nibble := make([]byte, transBuff)
 
 	for {
-		byteRead, errFrom := from.Read(nibble)
 
+		// I think I need to be checking for io.EOF in errFrom below.
+		byteRead, errFrom := from.Read(nibble)
+		if (byteRead == 0) && (errFrom == io.EOF) {
+			// We appear to be done.
+			return true, nil
+		}
 		if errFrom != nil {
+			// Some other error must have happened.
 			return false, errFrom
 		}
 
