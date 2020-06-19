@@ -10,7 +10,7 @@ func TestIsFileSame(t *testing.T) {
 	maxTransBuff := 8192
 
 	// Torture test for boundary conditions.  :-)
-	for transBuff := 2; transBuff <= maxTransBuff; transBuff++ {
+	for transBuff := 1; transBuff <= maxTransBuff; transBuff++ {
 
 		sameStat, err := IsFileSame("testData/same_a.txt", "testData/same_b.txt", transBuff)
 		if err != nil {
@@ -37,7 +37,7 @@ func TestNibbleCopy(t *testing.T) {
 
 	maxTransBuff := 8192
 
-	for transBuff := 2; transBuff <= maxTransBuff; transBuff++ {
+	for transBuff := 1; transBuff <= maxTransBuff; transBuff++ {
 
 		nibStat, err := NibbleCopy("testData/same_a.txt", "testData/victim.txt", transBuff)
 		if err != nil {
