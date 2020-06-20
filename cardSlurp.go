@@ -76,6 +76,9 @@ func main() {
 	// Get results from the worker threads.
 	for i := 0; i < foundCount; i++ {
 		finishResult := <-doneQueue
+		if finishResult.MajorErr != nil {
+			panic("Major error locating and copying files")
+		}
 		summary = append(summary, finishResult)
 	}
 
@@ -89,14 +92,14 @@ func main() {
 		fmt.Printf("Card path: %s\n", r.FullPath)
 		fmt.Printf("Skipped: %d - Copied: %d\n", r.Skipped, r.Copied)
 
-		if len(r.Errors) == 0 {
+		if len(r.MinorErrs) == 0 {
 			fmt.Printf("(No errors.)\n")
 		} else {
 			fmt.Printf("*** ERRORS ***\n")
 			errorFlag = true
 
-			for y := range r.Errors {
-				fmt.Printf("%s\n", r.Errors[y])
+			for y := range r.MinorErrs {
+				fmt.Printf("%s\n", r.MinorErrs[y])
 			}
 		}
 	}
