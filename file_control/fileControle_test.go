@@ -1,19 +1,29 @@
 package file_control
 
-import "testing"
+import (
+	"testing"
+)
 
 // The tests are going to take some thought.  I can probably test RecurseDirTest
 // by itself, but LocateFilesTest and TargetNameGenTest depend on each other too
 // much to test them in isolation.
 
-func LocateFilesTest(t *testing.T) {
+func TestLocateFiles(t *testing.T) {
 	// Nothing yet.
 }
 
-func RecurseDirTest(t *testing.T) {
+func TestRecurseDir(t *testing.T) {
 	// Nothing yet.
+
+	foundFiles := make([]FoundFileStr, 0)
+	fullPath := "/home/pheckenl/go/src/cardSlurp/file_control/testData/source"
+	debugMode := false
+	err := RecurseDir(fullPath, &foundFiles, &debugMode)
+	if err != nil {
+		t.Fail()
+	}
 }
 
-func TargetNameGenTest(t *testing.T) {
+func TestTargetNameGen(t *testing.T) {
 	// Nothing yet.
 }

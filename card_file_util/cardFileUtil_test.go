@@ -14,7 +14,7 @@ func TestIsFileSame(t *testing.T) {
 
 		sameStat, err := IsFileSame("testData/same_a.txt", "testData/same_b.txt", transBuff)
 		if err != nil {
-			print("Error calling IsFileSame: " + err.Error() + "\n")
+			fmt.Print("Error calling IsFileSame: " + err.Error() + "\n")
 			t.Fail()
 		}
 
@@ -24,7 +24,7 @@ func TestIsFileSame(t *testing.T) {
 
 		diffStat, err := IsFileSame("testData/same_a.txt", "testData/diff_b.txt", transBuff)
 		if err != nil {
-			print("Error calling IsFileSame: " + err.Error() + "\n")
+			fmt.Print("Error calling IsFileSame: " + err.Error() + "\n")
 		}
 
 		if diffStat {

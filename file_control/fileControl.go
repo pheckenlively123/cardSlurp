@@ -2,6 +2,7 @@ package file_control
 
 import (
 	"cardSlurp/card_file_util"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -39,7 +40,12 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 
 	foundFiles := make([]FoundFileStr, 0)
 
-	RecurseDir(fullPath, &foundFiles, debugMode)
+	err := RecurseDir(fullPath, &foundFiles, debugMode)
+	if err != nil {
+		// Punch out early
+		doneMsg <- *rv
+		return
+	}
 
 	for x := range foundFiles {
 
@@ -51,7 +57,6 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 		targFileMsg.Callback = make(chan ReturnFileNameMsg)
 		targFileMsg.LeafName = f.LeafName
 		targFileMsg.FullName = sourceFile
-		//targFileMsg.leafData = sourceData
 
 		getTargetQueue <- *targFileMsg
 
@@ -97,13 +102,14 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 	doneMsg <- *rv
 }
 
-func RecurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) {
+func RecurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) error {
 
 	fmt.Printf("Recursing: %s\n", fullPath)
 
-	leafList, err1 := ioutil.ReadDir(fullPath)
-	if err1 != nil {
-		panic(err1)
+	leafList, err := ioutil.ReadDir(fullPath)
+	if err != nil {
+		// Need to do something more intelligent here. :-P
+		return err
 	}
 
 	for x := range leafList {
@@ -135,9 +141,12 @@ func RecurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) {
 		default:
 			fmt.Printf("Got unknown file type: %s\n",
 				leaf.Name())
-			panic("Do not know how to process unknown files.\n")
+			fail := errors.New("Found unknown file type.")
+			return fail
 		}
 	}
+
+	return nil
 }
 
 // Wait for the card processors to request filenames.  Perhaps look at adding
