@@ -10,10 +10,11 @@ import (
 )
 
 type FinishMsg struct {
-	FullPath string
-	Skipped  int
-	Copied   int
-	Errors   []string
+	FullPath  string
+	Skipped   int
+	Copied    int
+	MajorErr  error
+	MinorErrs []string
 }
 
 type GetFileNameMsg struct {
@@ -40,9 +41,10 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 
 	foundFiles := make([]FoundFileStr, 0)
 
-	err := RecurseDir(fullPath, &foundFiles, debugMode)
+	err := recurseDir(fullPath, &foundFiles, debugMode)
 	if err != nil {
 		// Punch out early
+		rv.MajorErr = err
 		doneMsg <- *rv
 		return
 	}
@@ -75,7 +77,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 
 		_, err := card_file_util.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, *transBuff)
 		if err != nil {
-			rv.Errors = append(rv.Errors,
+			rv.MinorErrs = append(rv.MinorErrs,
 				"Error copying: "+sourceFile)
 			fmt.Print("Error copying: " + sourceFile)
 			continue
@@ -83,7 +85,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 
 		sameStat, err := card_file_util.IsFileSame(sourceFile, callBackMsg.WriteLeafName, *transBuff)
 		if err != nil {
-			rv.Errors = append(rv.Errors,
+			rv.MinorErrs = append(rv.MinorErrs,
 				"Error checking files are same: "+sourceFile)
 			fmt.Print("Error verifying copy for: " + sourceFile)
 			continue
@@ -93,7 +95,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 			rv.Copied++
 			fmt.Printf("%s/%s - Done\n", f.FullPath, f.LeafName)
 		} else {
-			rv.Errors = append(rv.Errors,
+			rv.MinorErrs = append(rv.MinorErrs,
 				"file verification did not match for: "+sourceFile)
 		}
 	}
@@ -102,13 +104,12 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 	doneMsg <- *rv
 }
 
-func RecurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) error {
+func recurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) error {
 
 	fmt.Printf("Recursing: %s\n", fullPath)
 
 	leafList, err := ioutil.ReadDir(fullPath)
 	if err != nil {
-		// Need to do something more intelligent here. :-P
 		return err
 	}
 
@@ -131,17 +132,21 @@ func RecurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) er
 			}
 		case mode.IsDir():
 			newPath := fullPath + "/" + leaf.Name()
-			RecurseDir(newPath, foundFiles, debugMode)
+			recErr := recurseDir(newPath, foundFiles, debugMode)
+			if recErr != nil {
+				return recErr
+			}
 		case mode&os.ModeSymlink != 0:
 			fmt.Printf("Symlink: %s\n", leaf.Name())
-			panic("Do not know how to process symlinks.\n")
+			fail := errors.New("We do not know how to process symlinks")
+			return fail
 		case mode&os.ModeNamedPipe != 0:
 			fmt.Printf("Named pipe: %s\n", leaf.Name())
-			panic("Do not know how to process pipes.\n")
+			fail := errors.New("Do not know how to process pipes")
+			return fail
 		default:
-			fmt.Printf("Got unknown file type: %s\n",
-				leaf.Name())
-			fail := errors.New("Found unknown file type.")
+			fmt.Printf("Got unknown file type: %s\n", leaf.Name())
+			fail := errors.New("Found unknown file type")
 			return fail
 		}
 	}
