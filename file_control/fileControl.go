@@ -1,0 +1,260 @@
+package file_control
+
+import (
+	"cardSlurp/card_file_util"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"strings"
+)
+
+type FinishMsg struct {
+	FullPath string
+	Skipped  int
+	Copied   int
+	Errors   []string
+}
+
+type GetFileNameMsg struct {
+	LeafName string
+	FullName string
+	Callback chan ReturnFileNameMsg
+}
+
+type ReturnFileNameMsg struct {
+	WriteLeafName string
+	SkipFlag      bool
+}
+
+type FoundFileStr struct {
+	FullPath string
+	LeafName string
+	LeafMode os.FileMode
+}
+
+func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan GetFileNameMsg, transBuff *int, debugMode *bool) {
+
+	rv := new(FinishMsg)
+	rv.FullPath = fullPath
+
+	foundFiles := make([]FoundFileStr, 0)
+
+	err := RecurseDir(fullPath, &foundFiles, debugMode)
+	if err != nil {
+		// Punch out early
+		doneMsg <- *rv
+		return
+	}
+
+	for x := range foundFiles {
+
+		f := foundFiles[x]
+
+		sourceFile := f.FullPath + "/" + f.LeafName
+
+		targFileMsg := new(GetFileNameMsg)
+		targFileMsg.Callback = make(chan ReturnFileNameMsg)
+		targFileMsg.LeafName = f.LeafName
+		targFileMsg.FullName = sourceFile
+
+		getTargetQueue <- *targFileMsg
+
+		callBackMsg := <-targFileMsg.Callback
+
+		if *debugMode {
+			fmt.Printf("Using %s for write name.\n",
+				callBackMsg.WriteLeafName)
+		}
+
+		if callBackMsg.SkipFlag {
+			rv.Skipped++
+			fmt.Printf("Skipping, because it is already saved in the target: %s\n", f.LeafName)
+			continue
+		}
+
+		_, err := card_file_util.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, *transBuff)
+		if err != nil {
+			rv.Errors = append(rv.Errors,
+				"Error copying: "+sourceFile)
+			fmt.Print("Error copying: " + sourceFile)
+			continue
+		}
+
+		sameStat, err := card_file_util.IsFileSame(sourceFile, callBackMsg.WriteLeafName, *transBuff)
+		if err != nil {
+			rv.Errors = append(rv.Errors,
+				"Error checking files are same: "+sourceFile)
+			fmt.Print("Error verifying copy for: " + sourceFile)
+			continue
+		}
+
+		if sameStat {
+			rv.Copied++
+			fmt.Printf("%s/%s - Done\n", f.FullPath, f.LeafName)
+		} else {
+			rv.Errors = append(rv.Errors,
+				"file verification did not match for: "+sourceFile)
+		}
+	}
+
+	// Let the main routine know we are done.
+	doneMsg <- *rv
+}
+
+func RecurseDir(fullPath string, foundFiles *[]FoundFileStr, debugMode *bool) error {
+
+	fmt.Printf("Recursing: %s\n", fullPath)
+
+	leafList, err := ioutil.ReadDir(fullPath)
+	if err != nil {
+		// Need to do something more intelligent here. :-P
+		return err
+	}
+
+	for x := range leafList {
+		leaf := leafList[x]
+
+		switch mode := leaf.Mode(); {
+		case mode.IsRegular():
+
+			foundRec := new(FoundFileStr)
+			foundRec.FullPath = fullPath
+			foundRec.LeafName = leaf.Name()
+			foundRec.LeafMode = leaf.Mode()
+
+			*foundFiles = append(*foundFiles, *foundRec)
+
+			if *debugMode {
+				fmt.Printf("Found: %s/%s\n", fullPath,
+					leaf.Name())
+			}
+		case mode.IsDir():
+			newPath := fullPath + "/" + leaf.Name()
+			RecurseDir(newPath, foundFiles, debugMode)
+		case mode&os.ModeSymlink != 0:
+			fmt.Printf("Symlink: %s\n", leaf.Name())
+			panic("Do not know how to process symlinks.\n")
+		case mode&os.ModeNamedPipe != 0:
+			fmt.Printf("Named pipe: %s\n", leaf.Name())
+			panic("Do not know how to process pipes.\n")
+		default:
+			fmt.Printf("Got unknown file type: %s\n",
+				leaf.Name())
+			fail := errors.New("Found unknown file type.")
+			return fail
+		}
+	}
+
+	return nil
+}
+
+// Wait for the card processors to request filenames.  Perhaps look at adding
+// some directions to my channel below, just to make it obvious what is going
+// on, and to provide some type safety.
+
+// This approach is careful, but not full proof.  If something else is writing
+// to the target directory, this program could still overwrite it.  However, it
+// will step around anything that is already there. It is also aware of any
+// files it has blessed for writing.  A foolproof way to make sure we have a
+// unique name would be to use the system open with excusive and create flags.
+// That approach would probably be portable to MacOS, because it is based on BSD
+// UNIX.  I don't think it would be portable to Windoze.
+
+// I also considered using uuids for generating unique names.  It would have
+// worked without all the fun of channeling all the threads through the
+// goroutine below.  The downside would have been filenames that differed
+// significantly from the names on the cards.
+func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transBuff *int, debugMode *bool) {
+
+	// Need to track what has been given for file names, so we can
+	// make sure there are no conflicts.
+	targMap := make(map[string]bool)
+
+	for {
+		// This thread blocks here until it gets a request on
+		// the channel.
+		request := <-getTargetQueue
+
+		if *debugMode {
+			fmt.Printf("Got target name request for: %s\n",
+				request.LeafName)
+		}
+
+		callbackMsg := new(ReturnFileNameMsg)
+
+		var tryName string
+
+		// Loop until we have a valid target name
+		for i := 0; i < 10000; i++ {
+
+			// Failsafe (I need to give some thought to finding a better way to handle this... :-P)
+			if i == 9999 {
+				panic("Error renaming:" + request.LeafName)
+			}
+
+			if i == 0 {
+
+				tryName = *targetDir + "/" + request.LeafName
+
+			} else {
+				leafParts := strings.Split(request.LeafName, ".")
+				leafStub := ""
+				leafExt := leafParts[len(leafParts)-1]
+
+				for i := 0; i < (len(leafParts) - 1); i++ {
+					if leafStub == "" {
+						leafStub = leafParts[i]
+					} else {
+						leafStub = leafStub + "." + leafParts[i]
+					}
+				}
+
+				tryName = fmt.Sprintf("%s/%s%s%d.%s",
+					*targetDir, leafStub, "-", i, leafExt)
+
+				if *debugMode {
+					fmt.Printf("Trying: %s\n", tryName)
+				}
+			}
+
+			if targMap[tryName] {
+				// This name has already been used.
+				// Try again.
+				continue
+			}
+
+			if _, err := os.Stat(tryName); os.IsNotExist(err) {
+				// tryName does not exist.  We should
+				// be OK to write
+
+				callbackMsg.WriteLeafName = tryName
+				targMap[tryName] = true
+				break
+			} else {
+				// File with the same name is already
+				// there.  Check to see if the file is
+				// the same as the one I'm trying to
+				// write.
+
+				sameStat, err := card_file_util.IsFileSame(tryName, request.FullName, *transBuff)
+				if err != nil {
+					// May not be best option, but
+					// at least I will know
+					// something went wrong.
+					panic("Failed to get same status.")
+				}
+
+				if sameStat {
+					callbackMsg.WriteLeafName = tryName
+					callbackMsg.SkipFlag = true
+					targMap[tryName] = true
+					break
+				}
+			}
+		}
+
+		// The send back the result.
+		request.Callback <- *callbackMsg
+	}
+}
