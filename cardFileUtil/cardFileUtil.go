@@ -1,4 +1,4 @@
-package card_file_util
+package cardFileUtil
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// Do a byte by byte comparison of the two files.
+// IsFileSame - Do a byte by byte comparison of the two files.
 func IsFileSame(thingOne string, thingTwo string, transBuff int) (bool, error) {
 
 	from, err := os.Open(thingOne)
@@ -66,7 +66,7 @@ func IsFileSame(thingOne string, thingTwo string, transBuff int) (bool, error) {
 	return true, nil
 }
 
-// Copy the file located at thingOne to location thingTwo.
+// NibbleCopy - Copy one file to another a nibble at a time.
 func NibbleCopy(thingOne string, thingTwo string, transBuff int) (bool, error) {
 
 	from, err := os.Open(thingOne)
