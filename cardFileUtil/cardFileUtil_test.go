@@ -1,4 +1,4 @@
-package card_file_util
+package cardFileUtil
 
 import (
 	"fmt"
