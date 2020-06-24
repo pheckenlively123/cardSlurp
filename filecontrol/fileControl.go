@@ -37,14 +37,14 @@ type foundFileStr struct {
 }
 
 // LocateFiles - Main spins up a copy of this function for each of the cards we are offloading.
-func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan GetFileNameMsg, transBuff *int, debugMode *bool) {
+func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan GetFileNameMsg, transBuff int, debugMode bool) {
 
 	rv := new(FinishMsg)
 	rv.FullPath = fullPath
 
 	foundFiles := make([]foundFileStr, 0)
 
-	err := recurseDir(fullPath, &foundFiles, debugMode)
+	err := recurseDir(fullPath, &foundFiles, &debugMode)
 	if err != nil {
 		// Punch out early
 		rv.MajorErr = err
@@ -67,7 +67,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 
 		callBackMsg := <-targFileMsg.Callback
 
-		if *debugMode {
+		if debugMode {
 			fmt.Printf("Using %s for write name.\n",
 				callBackMsg.WriteLeafName)
 		}
@@ -78,7 +78,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 			continue
 		}
 
-		_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, *transBuff)
+		_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, transBuff)
 		if err != nil {
 			rv.MinorErrs = append(rv.MinorErrs,
 				"Error copying: "+sourceFile)
@@ -86,7 +86,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 			continue
 		}
 
-		sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, *transBuff)
+		sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, transBuff)
 		if err != nil {
 			rv.MinorErrs = append(rv.MinorErrs,
 				"Error checking files are same: "+sourceFile)
@@ -175,7 +175,7 @@ func recurseDir(fullPath string, foundFiles *[]foundFileStr, debugMode *bool) er
 // significantly from the names on the cards.
 
 // TargetNameGen provides unique names for the target directory.
-func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transBuff *int, debugMode *bool) {
+func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir string, transBuff int, debugMode bool) {
 
 	// Need to track what has been given for file names, so we can
 	// make sure there are no conflicts.
@@ -186,7 +186,7 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transB
 		// the channel.
 		request := <-getTargetQueue
 
-		if *debugMode {
+		if debugMode {
 			fmt.Printf("Got target name request for: %s\n",
 				request.LeafName)
 		}
@@ -205,7 +205,7 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transB
 
 			if i == 0 {
 
-				tryName = *targetDir + "/" + request.LeafName
+				tryName = targetDir + "/" + request.LeafName
 
 			} else {
 				leafParts := strings.Split(request.LeafName, ".")
@@ -221,9 +221,9 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transB
 				}
 
 				tryName = fmt.Sprintf("%s/%s%s%d.%s",
-					*targetDir, leafStub, "-", i, leafExt)
+					targetDir, leafStub, "-", i, leafExt)
 
-				if *debugMode {
+				if debugMode {
 					fmt.Printf("Trying: %s\n", tryName)
 				}
 			}
@@ -247,7 +247,7 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transB
 				// the same as the one I'm trying to
 				// write.
 
-				sameStat, err := cardfileutil.IsFileSame(tryName, request.FullName, *transBuff)
+				sameStat, err := cardfileutil.IsFileSame(tryName, request.FullName, transBuff)
 				if err != nil {
 					// May not be best option, but
 					// at least I will know

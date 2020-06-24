@@ -1,52 +1,25 @@
 package main
 
 import (
+	"cardSlurp/commandline"
 	"cardSlurp/filecontrol"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"strings"
 )
 
-var targetDir = flag.String("targetDir", "",
-	"Target directory for the copied files.")
-var mountDir = flag.String("mountDir", "",
-	"Directory where cards are mounted.")
-var searchStr = flag.String("searchStr", "",
-	"String to distinguish cards from other mounted media in mountDir.")
-var debugMode = flag.Bool("debugMode", false,
-	"Print extra debug information.")
-var transBuff = flag.Int("transBuff", 8192,
-	"Transfer buffer size.")
-
-func init() {
-	flag.Parse()
-
-	if *targetDir == "" {
-		flag.PrintDefaults()
-		panic("Missing -targetDir\n")
-	}
-
-	if *mountDir == "" {
-		flag.PrintDefaults()
-		panic("Missing -mountDir\n")
-	}
-
-	if *searchStr == "" {
-		flag.PrintDefaults()
-		panic("Missing -searchStr\n")
-	}
-}
-
 func main() {
+
+	// Get command line options.
+	opts := commandline.GetOpts()
 
 	// Build the channel the other go routines will use to get the
 	// target filenames.
 	getTargetQueue := make(chan filecontrol.GetFileNameMsg)
 
-	go filecontrol.TargetNameGen(getTargetQueue, targetDir, transBuff, debugMode)
+	go filecontrol.TargetNameGen(getTargetQueue, opts.TargetDir, opts.TransBuff, opts.DebugMode)
 
-	targLeafList, err1 := ioutil.ReadDir(*mountDir)
+	targLeafList, err1 := ioutil.ReadDir(opts.MountDir)
 	if err1 != nil {
 		panic("Error reading mountDir.\n")
 	}
@@ -58,15 +31,15 @@ func main() {
 
 		leaf := targLeafList[x]
 
-		if strings.Contains(leaf.Name(), *searchStr) {
+		if strings.Contains(leaf.Name(), opts.SearchStr) {
 
-			fullPath := *mountDir + "/" + leaf.Name()
+			fullPath := opts.MountDir + "/" + leaf.Name()
 
 			fmt.Printf("Found match: %s\n", fullPath)
 
 			// Spawn a thread to offload each card at the
 			// same time.
-			go filecontrol.LocateFiles(fullPath, doneQueue, getTargetQueue, transBuff, debugMode)
+			go filecontrol.LocateFiles(fullPath, doneQueue, getTargetQueue, opts.TransBuff, opts.DebugMode)
 			foundCount++
 		}
 	}

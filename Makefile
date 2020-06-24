@@ -2,7 +2,7 @@ GOCMD=go
 GOBLD=$(GOCMD) build
 TARGET=$(GOPATH)/bin
 
-cardSlurp: cardSlurp.go cardfileutil/*.go filecontrol/*.go
+cardSlurp: cardSlurp.go cardfileutil/*.go filecontrol/*.go commandline/*.go
 	$(GOBLD) cardSlurp.go
 
 all: cardSlurp
