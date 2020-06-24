@@ -1,7 +1,7 @@
 package main
 
 import (
-	"cardSlurp/fileControl"
+	"cardSlurp/filecontrol"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -42,9 +42,9 @@ func main() {
 
 	// Build the channel the other go routines will use to get the
 	// target filenames.
-	getTargetQueue := make(chan fileControl.GetFileNameMsg)
+	getTargetQueue := make(chan filecontrol.GetFileNameMsg)
 
-	go fileControl.TargetNameGen(getTargetQueue, targetDir, transBuff, debugMode)
+	go filecontrol.TargetNameGen(getTargetQueue, targetDir, transBuff, debugMode)
 
 	targLeafList, err1 := ioutil.ReadDir(*mountDir)
 	if err1 != nil {
@@ -52,7 +52,7 @@ func main() {
 	}
 
 	foundCount := 0
-	doneQueue := make(chan fileControl.FinishMsg)
+	doneQueue := make(chan filecontrol.FinishMsg)
 
 	for x := range targLeafList {
 
@@ -66,12 +66,12 @@ func main() {
 
 			// Spawn a thread to offload each card at the
 			// same time.
-			go fileControl.LocateFiles(fullPath, doneQueue, getTargetQueue, transBuff, debugMode)
+			go filecontrol.LocateFiles(fullPath, doneQueue, getTargetQueue, transBuff, debugMode)
 			foundCount++
 		}
 	}
 
-	summary := make([]fileControl.FinishMsg, 0)
+	summary := make([]filecontrol.FinishMsg, 0)
 
 	// Get results from the worker threads.
 	for i := 0; i < foundCount; i++ {
