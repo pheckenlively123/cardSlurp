@@ -1,7 +1,7 @@
-package fileControl
+package filecontrol
 
 import (
-	"cardSlurp/cardFileUtil"
+	"cardSlurp/cardfileutil"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -78,7 +78,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 			continue
 		}
 
-		_, err := cardFileUtil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, *transBuff)
+		_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, *transBuff)
 		if err != nil {
 			rv.MinorErrs = append(rv.MinorErrs,
 				"Error copying: "+sourceFile)
@@ -86,7 +86,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 			continue
 		}
 
-		sameStat, err := cardFileUtil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, *transBuff)
+		sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, *transBuff)
 		if err != nil {
 			rv.MinorErrs = append(rv.MinorErrs,
 				"Error checking files are same: "+sourceFile)
@@ -247,7 +247,7 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir *string, transB
 				// the same as the one I'm trying to
 				// write.
 
-				sameStat, err := cardFileUtil.IsFileSame(tryName, request.FullName, *transBuff)
+				sameStat, err := cardfileutil.IsFileSame(tryName, request.FullName, *transBuff)
 				if err != nil {
 					// May not be best option, but
 					// at least I will know

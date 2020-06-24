@@ -1,4 +1,4 @@
-package fileControl
+package filecontrol
 
 import (
 	"testing"
