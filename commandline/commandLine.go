@@ -11,13 +11,17 @@ type CmdOpts struct {
 	TransBuff int
 }
 
-var targetDir = flag.String("targetDir", "", "Target directory for the copied files.")
-var mountDir = flag.String("mountDir", "", "Directory where cards are mounted.")
-var searchStr = flag.String("searchStr", "", "String to distinguish cards from other mounted media in mountDir.")
-var debugMode = flag.Bool("debugMode", false, "Print extra debug information.")
-var transBuff = flag.Int("transBuff", 8192, "Transfer buffer size.")
+// GetOpts - Return the command line arguments in a CmdOpts struct
+func GetOpts() CmdOpts {
 
-func init() {
+	rv := new(CmdOpts)
+
+	targetDir := flag.String("targetDir", "", "Target directory for the copied files.")
+	mountDir := flag.String("mountDir", "", "Directory where cards are mounted.")
+	searchStr := flag.String("searchStr", "", "String to distinguish cards from other mounted media in mountDir.")
+	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
+	transBuff := flag.Int("transBuff", 8192, "Transfer buffer size.")
+
 	flag.Parse()
 
 	if *targetDir == "" {
@@ -34,12 +38,6 @@ func init() {
 		flag.PrintDefaults()
 		panic("Missing -searchStr\n")
 	}
-}
-
-// GetOpts - Return the command line arguments in a CmdOpts struct
-func GetOpts() CmdOpts {
-
-	rv := new(CmdOpts)
 
 	rv.TargetDir = *targetDir
 	rv.MountDir = *mountDir
