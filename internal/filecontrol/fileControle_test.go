@@ -1,6 +1,7 @@
 package filecontrol
 
 import (
+	"os"
 	"testing"
 )
 
@@ -16,7 +17,8 @@ func TestRecurseDir(t *testing.T) {
 	// Nothing yet.
 
 	foundFiles := make([]foundFileStr, 0)
-	fullPath := "/home/pheckenl/go/src/cardSlurp/file_control/testData/source"
+	home := os.Getenv("HOME")
+	fullPath := home + "/go/src/github.com/cardSlurp/internal/filecontrol/testData/source"
 	debugMode := false
 	err := recurseDir(fullPath, &foundFiles, &debugMode)
 	if err != nil {
