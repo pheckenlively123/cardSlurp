@@ -1,17 +1,20 @@
 package main
 
 import (
-	"cardSlurp/commandline"
-	"cardSlurp/filecontrol"
 	"fmt"
-	"io/ioutil"
-	"strings"
+
+	"github.com/pheckenlively123/cardSlurp/internal/commandline"
+	"github.com/pheckenlively123/cardSlurp/internal/filecontrol"
 )
 
 func main() {
 
 	// Get command line options.
-	opts := commandline.GetOpts()
+	opts, err := commandline.GetOpts()
+	if err != nil {
+		// No point in continuing.
+		panic("error processing command line arguments: " + err.Error())
+	}
 
 	// Build the channel the other go routines will use to get the
 	// target filenames.
@@ -19,35 +22,16 @@ func main() {
 
 	go filecontrol.TargetNameGen(getTargetQueue, opts.TargetDir, opts.TransBuff, opts.DebugMode)
 
-	targLeafList, err1 := ioutil.ReadDir(opts.MountDir)
-	if err1 != nil {
-		panic("Error reading mountDir.\n")
-	}
-
-	foundCount := 0
 	doneQueue := make(chan filecontrol.FinishMsg)
 
-	for x := range targLeafList {
-
-		leaf := targLeafList[x]
-
-		if strings.Contains(leaf.Name(), opts.SearchStr) {
-
-			fullPath := opts.MountDir + "/" + leaf.Name()
-
-			fmt.Printf("Found match: %s\n", fullPath)
-
-			// Spawn a thread to offload each card at the
-			// same time.
-			go filecontrol.LocateFiles(fullPath, doneQueue, getTargetQueue, opts.TransBuff, opts.DebugMode)
-			foundCount++
-		}
+	for _, mp := range opts.MountList {
+		go filecontrol.LocateFiles(mp, doneQueue, getTargetQueue, opts.TransBuff, opts.DebugMode)
 	}
 
 	summary := make([]filecontrol.FinishMsg, 0)
 
 	// Get results from the worker threads.
-	for i := 0; i < foundCount; i++ {
+	for i := 0; i < len(opts.MountList); i++ {
 		finishResult := <-doneQueue
 		if finishResult.MajorErr != nil {
 			panic("Major error locating and copying files")
