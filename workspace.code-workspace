@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "cmd"
+		},
+		{
+			"path": "internal\\cardfileutil"
+		},
+		{
+			"path": "internal\\commandline"
+		},
+		{
+			"path": "internal\\filecontrol"
+		}
+	],
+	"settings": {}
+}

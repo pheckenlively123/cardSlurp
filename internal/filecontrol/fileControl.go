@@ -1,12 +1,13 @@
 package filecontrol
 
 import (
-	"cardSlurp/cardfileutil"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/pheckenlively123/cardSlurp/internal/cardfileutil"
 )
 
 // FinishMsg - passed back to main from the per card worker threads.
