@@ -12,6 +12,12 @@
 		{
 			"path": "../../internal/filecontrol"
 		},
+		{
+			"path": "../../internal"
+		},
+		{
+			"path": "../.."
+		}
 	],
 	"settings": {}
 }
