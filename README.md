@@ -62,7 +62,7 @@ win_intel
 ```
 
 By default, Windows does not have `make`, so you might have to make the
-win_intel target on Linux or Mac.
+`win_intel` target on Linux or Mac.
 
 # The Author
 
