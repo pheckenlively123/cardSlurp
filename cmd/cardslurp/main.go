@@ -1,11 +1,13 @@
 package main
 
 import (
-	"cardSlurp/commandline"
-	"cardSlurp/filecontrol"
 	"fmt"
 	"io/ioutil"
 	"strings"
+
+	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
+
+	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/commandline"
 )
 
 func main() {
