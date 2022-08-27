@@ -1,12 +1,12 @@
 package filecontrol
 
 import (
-	"cardSlurp/cardfileutil"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
 
 // FinishMsg - passed back to main from the per card worker threads.
@@ -111,7 +111,7 @@ func recurseDir(fullPath string, foundFiles *[]foundFileStr, debugMode *bool) er
 
 	fmt.Printf("Recursing: %s\n", fullPath)
 
-	leafList, err := ioutil.ReadDir(fullPath)
+	leafList, err := os.ReadDir(fullPath)
 	if err != nil {
 		return err
 	}
