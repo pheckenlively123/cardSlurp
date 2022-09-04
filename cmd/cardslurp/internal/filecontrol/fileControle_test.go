@@ -1,6 +1,7 @@
 package filecontrol
 
 import (
+	"os"
 	"testing"
 )
 
@@ -15,12 +16,16 @@ func TestLocateFiles(t *testing.T) {
 func TestRecurseDir(t *testing.T) {
 	// Nothing yet.
 
+	// Base the path of the test source on the home directory variable.  That
+	// way, this test should work with other developers too.  :-P
+	homedir := os.Getenv("HOME")
+
 	foundFiles := make([]foundFileStr, 0)
-	fullPath := "/home/pheckenl/go/src/cardSlurp/file_control/testData/source"
+	fullPath := homedir + "/go/src/cardSlurp/cmd/cardslurp/internal/filecontrol/testData/source"
 	debugMode := false
 	err := recurseDir(fullPath, &foundFiles, &debugMode)
 	if err != nil {
-		t.Fail()
+		t.Fatal("recurseDir() returned an error")
 	}
 }
 

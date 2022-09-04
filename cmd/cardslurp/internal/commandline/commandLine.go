@@ -1,49 +1,42 @@
 package commandline
 
-import "flag"
+import (
+	"errors"
+	"flag"
+	"strings"
+)
 
 // CmdOpts - All of the options provided from the command line.
 type CmdOpts struct {
 	TargetDir string
-	MountDir  string
-	SearchStr string
+	MountList []string
 	DebugMode bool
 	TransBuff int
 }
 
 // GetOpts - Return the command line arguments in a CmdOpts struct
-func GetOpts() CmdOpts {
+func GetOpts() (CmdOpts, error) {
 
-	rv := new(CmdOpts)
-
-	targetDir := flag.String("targetDir", "", "Target directory for the copied files.")
-	mountDir := flag.String("mountDir", "", "Directory where cards are mounted.")
-	searchStr := flag.String("searchStr", "", "String to distinguish cards from other mounted media in mountDir.")
+	targetDir := flag.String("targetdir", "", "Target directory for the copied files.")
+	mountListStr := flag.String("mountlist", "", "Directory where cards are mounted.")
 	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
 	transBuff := flag.Int("transBuff", 8192, "Transfer buffer size.")
 
 	flag.Parse()
 
 	if *targetDir == "" {
-		flag.PrintDefaults()
-		panic("Missing -targetDir\n")
+		return CmdOpts{}, errors.New("-targetdir is a required parameter")
+	}
+	if *mountListStr == "" {
+		return CmdOpts{}, errors.New("-mountlist is a required parameter")
 	}
 
-	if *mountDir == "" {
-		flag.PrintDefaults()
-		panic("Missing -mountDir\n")
-	}
+	ml := strings.Split(*mountListStr, ",")
 
-	if *searchStr == "" {
-		flag.PrintDefaults()
-		panic("Missing -searchStr\n")
-	}
-
-	rv.TargetDir = *targetDir
-	rv.MountDir = *mountDir
-	rv.SearchStr = *searchStr
-	rv.DebugMode = *debugMode
-	rv.TransBuff = *transBuff
-
-	return *rv
+	return CmdOpts{
+		TargetDir: *targetDir,
+		MountList: ml,
+		DebugMode: *debugMode,
+		TransBuff: *transBuff,
+	}, nil
 }

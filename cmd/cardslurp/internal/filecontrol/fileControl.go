@@ -1,10 +1,11 @@
 package filecontrol
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
@@ -31,13 +32,14 @@ type returnFileNameMsg struct {
 }
 
 type foundFileStr struct {
-	FullPath string
-	LeafName string
-	LeafMode os.FileMode
+	ParentDir string
+	LeafName  string
+	LeafMode  os.FileMode
 }
 
 // LocateFiles - Main spins up a copy of this function for each of the cards we are offloading.
-func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan GetFileNameMsg, transBuff int, debugMode bool) {
+func LocateFiles(fullPath string, doneMsg chan FinishMsg,
+	getTargetQueue chan GetFileNameMsg, transBuff int, debugMode bool) {
 
 	rv := new(FinishMsg)
 	rv.FullPath = fullPath
@@ -52,56 +54,89 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg, getTargetQueue chan Ge
 		return
 	}
 
-	for x := range foundFiles {
+	workChan := make(chan foundFileStr)
+	var wg sync.WaitGroup
+	var lock sync.Mutex
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		f := foundFiles[x]
+	// Fire up some helper go routines to help expedite the copy process.
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(lctx context.Context, wg *sync.WaitGroup, work <-chan foundFileStr) {
 
-		sourceFile := f.FullPath + "/" + f.LeafName
+			defer wg.Done()
 
-		targFileMsg := new(GetFileNameMsg)
-		targFileMsg.Callback = make(chan returnFileNameMsg)
-		targFileMsg.LeafName = f.LeafName
-		targFileMsg.FullName = sourceFile
+			for {
+				select {
+				case <-lctx.Done():
+					return
+				case wMsg := <-work:
+					sourceFile := wMsg.ParentDir + "/" + wMsg.LeafName
 
-		getTargetQueue <- *targFileMsg
+					targFileMsg := GetFileNameMsg{
+						Callback: make(chan returnFileNameMsg),
+						LeafName: wMsg.LeafName,
+						FullName: sourceFile,
+					}
 
-		callBackMsg := <-targFileMsg.Callback
+					getTargetQueue <- targFileMsg
 
-		if debugMode {
-			fmt.Printf("Using %s for write name.\n",
-				callBackMsg.WriteLeafName)
-		}
+					callBackMsg := <-targFileMsg.Callback
 
-		if callBackMsg.SkipFlag {
-			rv.Skipped++
-			fmt.Printf("Skipping, because it is already saved in the target: %s\n", f.LeafName)
-			continue
-		}
+					if debugMode {
+						fmt.Printf("Using %s for write name.\n",
+							callBackMsg.WriteLeafName)
+					}
 
-		_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, transBuff)
-		if err != nil {
-			rv.MinorErrs = append(rv.MinorErrs,
-				"Error copying: "+sourceFile)
-			fmt.Print("Error copying: " + sourceFile)
-			continue
-		}
+					if callBackMsg.SkipFlag {
+						lock.Lock()
+						rv.Skipped++
+						lock.Unlock()
+						fmt.Printf("Skipping, because it is already saved in the target: %s\n", wMsg.LeafName)
+						continue
+					}
 
-		sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, transBuff)
-		if err != nil {
-			rv.MinorErrs = append(rv.MinorErrs,
-				"Error checking files are same: "+sourceFile)
-			fmt.Print("Error verifying copy for: " + sourceFile)
-			continue
-		}
+					_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, transBuff)
+					if err != nil {
+						lock.Lock()
+						rv.MinorErrs = append(rv.MinorErrs,
+							"Error copying: "+sourceFile)
+						lock.Unlock()
+						fmt.Print("Error copying: " + sourceFile)
+						continue
+					}
 
-		if sameStat {
-			rv.Copied++
-			fmt.Printf("%s/%s - Done\n", f.FullPath, f.LeafName)
-		} else {
-			rv.MinorErrs = append(rv.MinorErrs,
-				"file verification did not match for: "+sourceFile)
-		}
+					sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, transBuff)
+					if err != nil {
+						lock.Lock()
+						rv.MinorErrs = append(rv.MinorErrs,
+							"Error checking files are same: "+sourceFile)
+						lock.Unlock()
+						fmt.Print("Error verifying copy for: " + sourceFile)
+						continue
+					}
+
+					if sameStat {
+						lock.Lock()
+						rv.Copied++
+						lock.Unlock()
+						fmt.Printf("%s/%s - Done\n", wMsg.ParentDir, wMsg.LeafName)
+					} else {
+						rv.MinorErrs = append(rv.MinorErrs,
+							"file verification did not match for: "+sourceFile)
+					}
+				}
+			}
+		}(ctx, &wg, workChan)
 	}
+
+	for _, foundFile := range foundFiles {
+		workChan <- foundFile
+	}
+
+	cancel()
+	wg.Wait()
 
 	// Let the main routine know we are done.
 	doneMsg <- *rv
@@ -111,46 +146,35 @@ func recurseDir(fullPath string, foundFiles *[]foundFileStr, debugMode *bool) er
 
 	fmt.Printf("Recursing: %s\n", fullPath)
 
-	leafList, err := os.ReadDir(fullPath)
+	dirList, err := os.ReadDir(fullPath)
 	if err != nil {
 		return err
 	}
 
-	for x := range leafList {
-		leaf := leafList[x]
+	for _, dirEntry := range dirList {
 
-		switch mode := leaf.Mode(); {
-		case mode.IsRegular():
-
-			foundRec := new(foundFileStr)
-			foundRec.FullPath = fullPath
-			foundRec.LeafName = leaf.Name()
-			foundRec.LeafMode = leaf.Mode()
-
-			*foundFiles = append(*foundFiles, *foundRec)
-
-			if *debugMode {
-				fmt.Printf("Found: %s/%s\n", fullPath,
-					leaf.Name())
-			}
-		case mode.IsDir():
-			newPath := fullPath + "/" + leaf.Name()
+		switch {
+		case dirEntry.IsDir():
+			newPath := fullPath + "/" + dirEntry.Name()
 			recErr := recurseDir(newPath, foundFiles, debugMode)
 			if recErr != nil {
 				return recErr
 			}
-		case mode&os.ModeSymlink != 0:
-			fmt.Printf("Symlink: %s\n", leaf.Name())
-			fail := errors.New("We do not know how to process symlinks")
-			return fail
-		case mode&os.ModeNamedPipe != 0:
-			fmt.Printf("Named pipe: %s\n", leaf.Name())
-			fail := errors.New("Do not know how to process pipes")
-			return fail
 		default:
-			fmt.Printf("Got unknown file type: %s\n", leaf.Name())
-			fail := errors.New("Found unknown file type")
-			return fail
+			// Just grab everything that is not a directory.  If they gave us a
+			// card with special files, we will just get errors trying to copy.
+			foundRec := foundFileStr{
+				ParentDir: fullPath,
+				LeafName:  dirEntry.Name(),
+				LeafMode:  dirEntry.Type(),
+			}
+
+			*foundFiles = append(*foundFiles, foundRec)
+
+			if *debugMode {
+				fmt.Printf("Found: %s/%s\n", fullPath,
+					dirEntry.Name())
+			}
 		}
 	}
 
@@ -198,7 +222,8 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir string, transBu
 		// Loop until we have a valid target name
 		for i := 0; i < 10000; i++ {
 
-			// Failsafe (I need to give some thought to finding a better way to handle this... :-P)
+			// Failsafe (I need to give some thought to finding a better way to
+			// handle this... :-P)
 			if i == 9999 {
 				panic("Error renaming:" + request.LeafName)
 			}

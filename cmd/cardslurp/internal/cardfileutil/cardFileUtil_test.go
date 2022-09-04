@@ -46,7 +46,7 @@ func TestNibbleCopy(t *testing.T) {
 		}
 
 		if !nibStat {
-			t.Error(fmt.Sprintf("Nibble copy returned false: transBuff == %d\n", transBuff))
+			t.Errorf("Nibble copy returned false: transBuff == %d\n", transBuff)
 		}
 
 		sameStat, err := IsFileSame("testData/same_a.txt", "testData/victim.txt", transBuff)
