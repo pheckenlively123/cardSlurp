@@ -67,6 +67,9 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 
 			defer wg.Done()
 
+			// THIS APPROACH WILL NOT WORK!  Once the worker go-routine get's
+			// the cancel call, it will exit with WORK STILL PENDING
+
 			for {
 				select {
 				case <-lctx.Done():
