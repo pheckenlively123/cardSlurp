@@ -70,7 +70,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 	defer cancel()
 
 	// Fire up some helper go routines to help expedite the copy process.
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(lctx context.Context, wg *sync.WaitGroup, work <-chan foundFile,
 			res chan<- workResult) {
