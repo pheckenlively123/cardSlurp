@@ -61,9 +61,9 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 		minorErr string
 	}
 
-	// Make the work channel big enough to take all the work in one swell foop.
+	// Make the work and result channels big enough to take all the work in one swell foop.
 	workCh := make(chan foundFile, len(foundFiles))
-	resultCh := make(chan workResult)
+	resultCh := make(chan workResult, len(foundFiles))
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
