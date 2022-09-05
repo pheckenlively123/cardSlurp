@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
@@ -31,7 +32,7 @@ type returnFileNameMsg struct {
 	SkipFlag      bool
 }
 
-type foundFileStr struct {
+type foundFile struct {
 	ParentDir string
 	LeafName  string
 	LeafMode  os.FileMode
@@ -44,7 +45,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 	rv := new(FinishMsg)
 	rv.FullPath = fullPath
 
-	foundFiles := make([]foundFileStr, 0)
+	foundFiles := make([]foundFile, 0)
 
 	err := recurseDir(fullPath, &foundFiles, &debugMode)
 	if err != nil {
@@ -54,22 +55,29 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 		return
 	}
 
-	workChan := make(chan foundFileStr)
+	type workResult struct {
+		skipped  bool
+		copied   bool
+		minorErr string
+	}
+
+	// Make the work channel big enough to take all the work in one swell foop.
+	workCh := make(chan foundFile, len(foundFiles))
+	resultCh := make(chan workResult)
+
 	var wg sync.WaitGroup
-	var lock sync.Mutex
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Fire up some helper go routines to help expedite the copy process.
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func(lctx context.Context, wg *sync.WaitGroup, work <-chan foundFileStr) {
+		go func(lctx context.Context, wg *sync.WaitGroup, work <-chan foundFile,
+			res chan<- workResult) {
 
 			defer wg.Done()
 
-			// THIS APPROACH WILL NOT WORK!  Once the worker go-routine get's
-			// the cancel call, it will exit with WORK STILL PENDING
-
+		Loop:
 			for {
 				select {
 				case <-lctx.Done():
@@ -93,49 +101,75 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 					}
 
 					if callBackMsg.SkipFlag {
-						lock.Lock()
-						rv.Skipped++
-						lock.Unlock()
 						fmt.Printf("Skipping, because it is already saved in the target: %s\n", wMsg.LeafName)
-						continue
+						resMsg := workResult{
+							skipped: true,
+						}
+						res <- resMsg
+						continue Loop
 					}
 
 					_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, transBuff)
 					if err != nil {
-						lock.Lock()
-						rv.MinorErrs = append(rv.MinorErrs,
-							"Error copying: "+sourceFile)
-						lock.Unlock()
 						fmt.Print("Error copying: " + sourceFile)
-						continue
+						resMsg := workResult{
+							minorErr: fmt.Sprintf("Error copying: %s", sourceFile),
+						}
+						res <- resMsg
+						continue Loop
 					}
 
 					sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, transBuff)
 					if err != nil {
-						lock.Lock()
-						rv.MinorErrs = append(rv.MinorErrs,
-							"Error checking files are same: "+sourceFile)
-						lock.Unlock()
 						fmt.Print("Error verifying copy for: " + sourceFile)
-						continue
+						resMsg := workResult{
+							minorErr: fmt.Sprintf("error checking files are the same: %s", sourceFile),
+						}
+						res <- resMsg
+						continue Loop
 					}
 
 					if sameStat {
-						lock.Lock()
-						rv.Copied++
-						lock.Unlock()
 						fmt.Printf("%s/%s - Done\n", wMsg.ParentDir, wMsg.LeafName)
+						resMsg := workResult{
+							copied: true,
+						}
+						res <- resMsg
 					} else {
-						rv.MinorErrs = append(rv.MinorErrs,
-							"file verification did not match for: "+sourceFile)
+						fmt.Printf("File verification did not match for: %s", sourceFile)
+						resMsg := workResult{
+							minorErr: fmt.Sprintf("file verification did not match for: %s", sourceFile),
+						}
+						res <- resMsg
 					}
 				}
 			}
-		}(ctx, &wg, workChan)
+		}(ctx, &wg, workCh, resultCh)
 	}
 
 	for _, foundFile := range foundFiles {
-		workChan <- foundFile
+		// Stagger the sends to try and spread out the copy and verify at different times.
+		time.Sleep(333 * time.Millisecond)
+		workCh <- foundFile
+	}
+
+	// Loop until all the files to be copied have been accounted for.  If we
+	// just called cancel next, we would leave some files behind.
+	for x := 0; x < len(foundFiles); x++ {
+
+		res := <-resultCh
+
+		if res.skipped {
+			rv.Skipped++
+		}
+
+		if res.copied {
+			rv.Copied++
+		}
+
+		if res.minorErr != "" {
+			rv.MinorErrs = append(rv.MinorErrs, res.minorErr)
+		}
 	}
 
 	cancel()
@@ -145,7 +179,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 	doneMsg <- *rv
 }
 
-func recurseDir(fullPath string, foundFiles *[]foundFileStr, debugMode *bool) error {
+func recurseDir(fullPath string, foundFiles *[]foundFile, debugMode *bool) error {
 
 	fmt.Printf("Recursing: %s\n", fullPath)
 
@@ -166,7 +200,7 @@ func recurseDir(fullPath string, foundFiles *[]foundFileStr, debugMode *bool) er
 		default:
 			// Just grab everything that is not a directory.  If they gave us a
 			// card with special files, we will just get errors trying to copy.
-			foundRec := foundFileStr{
+			foundRec := foundFile{
 				ParentDir: fullPath,
 				LeafName:  dirEntry.Name(),
 				LeafMode:  dirEntry.Type(),

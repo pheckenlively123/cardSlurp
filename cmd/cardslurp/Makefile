@@ -6,6 +6,8 @@ mac_intel: clean
 
 win_intel: clean
 	GOOS=windows GOARCH=amd64 go build
+	mv cardslurp.exe cardslurp-new.exe
+	cp cardslurp-new.exe /home/pheckenl/Pics/RawPics-Work-Queue/2022-09-04-DeleteMe
 
 linux_intel: clean
 	GOOS=linux GOARCH=amd64 go build
