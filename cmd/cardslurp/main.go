@@ -17,20 +17,17 @@ func main() {
 		panic("error processing command line arguments: " + err.Error())
 	}
 
-	// Build the channel the other go routines will use to get the
-	// target filenames.
-	getTargetQueue := make(chan filecontrol.GetFileNameMsg)
-
-	go filecontrol.TargetNameGen(getTargetQueue, opts.TargetDir, opts.TransBuff, opts.DebugMode)
-
 	foundCount := 0
 	doneQueue := make(chan filecontrol.FinishMsg)
+
+	targetNameManager := filecontrol.NewTargetNameGenManager(opts.TargetDir)
 
 	for _, mountDir := range opts.MountList {
 
 		// Spawn a thread to offload each card at the
 		// same time.
-		go filecontrol.LocateFiles(mountDir, doneQueue, getTargetQueue, opts.TransBuff, opts.DebugMode)
+		go filecontrol.LocateFiles(mountDir, doneQueue, targetNameManager, opts.TransBuff,
+			opts.DebugMode)
 		foundCount++
 	}
 

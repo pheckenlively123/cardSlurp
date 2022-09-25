@@ -18,7 +18,7 @@ type CmdOpts struct {
 func GetOpts() (CmdOpts, error) {
 
 	targetDir := flag.String("targetdir", "", "Target directory for the copied files.")
-	mountListStr := flag.String("mountlist", "", "Directory where cards are mounted.")
+	mountListStr := flag.String("mountlist", "", "Comma delimited list of mounted cards.")
 	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
 	transBuff := flag.Int("transBuff", 8192, "Transfer buffer size.")
 

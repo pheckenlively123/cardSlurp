@@ -2,11 +2,12 @@ package filecontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
@@ -20,6 +21,7 @@ type FinishMsg struct {
 	MinorErrs []string
 }
 
+/*
 // GetFileNameMsg - card worker threads use this to get unique names from the thread running TargetNameGen.
 type GetFileNameMsg struct {
 	LeafName string
@@ -31,6 +33,7 @@ type returnFileNameMsg struct {
 	WriteLeafName string
 	SkipFlag      bool
 }
+*/
 
 type foundFile struct {
 	ParentDir string
@@ -40,7 +43,7 @@ type foundFile struct {
 
 // LocateFiles - Main spins up a copy of this function for each of the cards we are offloading.
 func LocateFiles(fullPath string, doneMsg chan FinishMsg,
-	getTargetQueue chan GetFileNameMsg, transBuff int, debugMode bool) {
+	targetNameManager *TargetNameGenManager, transBuff int, debugMode bool) {
 
 	rv := new(FinishMsg)
 	rv.FullPath = fullPath
@@ -72,8 +75,8 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 	// Fire up some helper go routines to help expedite the copy process.
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func(lctx context.Context, wg *sync.WaitGroup, work <-chan foundFile,
-			res chan<- workResult) {
+		go func(lctx context.Context, wg *sync.WaitGroup, nameMan *TargetNameGenManager,
+			work <-chan foundFile, res chan<- workResult) {
 
 			defer wg.Done()
 
@@ -85,31 +88,21 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 				case wMsg := <-work:
 					sourceFile := wMsg.ParentDir + "/" + wMsg.LeafName
 
-					targFileMsg := GetFileNameMsg{
-						Callback: make(chan returnFileNameMsg),
-						LeafName: wMsg.LeafName,
-						FullName: sourceFile,
-					}
-
-					getTargetQueue <- targFileMsg
-
-					callBackMsg := <-targFileMsg.Callback
-
-					if debugMode {
-						fmt.Printf("Using %s for write name.\n",
-							callBackMsg.WriteLeafName)
-					}
-
-					if callBackMsg.SkipFlag {
-						fmt.Printf("Skipping, because it is already saved in the target: %s\n", wMsg.LeafName)
+					targetName, err := nameMan.GetTargetName(sourceFile)
+					if err != nil {
+						fmt.Printf("Error getting target name for: %s", sourceFile)
 						resMsg := workResult{
-							skipped: true,
+							minorErr: fmt.Sprintf("Error getting target name for: %s", sourceFile),
 						}
 						res <- resMsg
 						continue Loop
 					}
 
-					_, err := cardfileutil.NibbleCopy(sourceFile, callBackMsg.WriteLeafName, transBuff)
+					if debugMode {
+						fmt.Printf("Using %s for write name.\n", targetName)
+					}
+
+					_, err = cardfileutil.NibbleCopy(sourceFile, targetName, transBuff)
 					if err != nil {
 						fmt.Print("Error copying: " + sourceFile)
 						resMsg := workResult{
@@ -119,7 +112,7 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 						continue Loop
 					}
 
-					sameStat, err := cardfileutil.IsFileSame(sourceFile, callBackMsg.WriteLeafName, transBuff)
+					sameStat, err := cardfileutil.IsFileSame(sourceFile, targetName, transBuff)
 					if err != nil {
 						fmt.Print("Error verifying copy for: " + sourceFile)
 						resMsg := workResult{
@@ -144,12 +137,10 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 					}
 				}
 			}
-		}(ctx, &wg, workCh, resultCh)
+		}(ctx, &wg, targetNameManager, workCh, resultCh)
 	}
 
 	for _, foundFile := range foundFiles {
-		// Stagger the sends to try and spread out the copy and verify at different times.
-		time.Sleep(333 * time.Millisecond)
 		workCh <- foundFile
 	}
 
@@ -235,6 +226,7 @@ func recurseDir(fullPath string, foundFiles *[]foundFile, debugMode *bool) error
 // goroutine below.  The downside would have been filenames that differed
 // significantly from the names on the cards.
 
+/*
 // TargetNameGen provides unique names for the target directory.
 func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir string, transBuff int, debugMode bool) {
 
@@ -329,4 +321,69 @@ func TargetNameGen(getTargetQueue chan GetFileNameMsg, targetDir string, transBu
 		// The send back the result.
 		request.Callback <- *callbackMsg
 	}
+}
+*/
+
+// TargetNameGenManager - Manage naming of the target filename.  All Calls for
+// a new filename require writing to the map, so make this struct compose sync.Mutex
+// instead of sync.RWMutex.
+type TargetNameGenManager struct {
+	sync.Mutex
+	knowntargets map[string]bool
+	targetDir    string
+}
+
+// NewTargetNameGenManager - Constructor for TargetNameGenManager
+func NewTargetNameGenManager(targetDir string) *TargetNameGenManager {
+	return &TargetNameGenManager{
+		Mutex:        sync.Mutex{},
+		knowntargets: make(map[string]bool),
+		targetDir:    targetDir,
+	}
+}
+
+func (t *TargetNameGenManager) GetTargetName(fullName string) (string, error) {
+
+	// Lock, to protoect t.knowntargets
+	t.Lock()
+	defer t.Unlock()
+
+	_, fileName := path.Split(fullName)
+	tryName := path.Join([]string{t.targetDir, fileName}...)
+
+	if !t.knowntargets[tryName] {
+		t.knowntargets[tryName] = true
+		return tryName, nil
+	}
+
+	// If we got this far, we have a naming conflict.
+
+	// Since we are going to be appending to the filename, we
+	// now need to handle the file extention.
+	fileParts := strings.Split(fileName, ".")
+
+	// A bit cheesy, but this should work
+	for i := 0; i < 10000; i++ {
+
+		if len(fileParts) != 2 {
+			// Since we got more or fewer parts than expected, just append
+			// to the file as is.
+			tryFileName := fmt.Sprintf("%s%d", fileName, i)
+			tryFullName := path.Join([]string{t.targetDir, tryFileName}...)
+			if !t.knowntargets[tryFullName] {
+				t.knowntargets[tryFullName] = true
+				return tryFullName, nil
+			}
+		}
+
+		// Since we have a file extension, work around it for the file name append.
+		tryFileNameExt := fmt.Sprintf("%s%d.%s", fileParts[0], i, fileParts[1])
+		tryFullNameExt := path.Join([]string{t.targetDir, tryFileNameExt}...)
+		if !t.knowntargets[tryFullNameExt] {
+			t.knowntargets[tryFullNameExt] = true
+			return tryFullNameExt, nil
+		}
+	}
+
+	return "", errors.New("failed to find unique target name")
 }
