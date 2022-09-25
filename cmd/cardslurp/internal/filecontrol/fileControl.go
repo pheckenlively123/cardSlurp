@@ -365,25 +365,28 @@ func (t *TargetNameGenManager) GetTargetName(fullName string) (string, error) {
 	// A bit cheesy, but this should work
 	for i := 0; i < 10000; i++ {
 
-		if len(fileParts) != 2 {
+		switch {
+		case len(fileParts) == 2:
+			// Since we have a file extension, work around it for the file name append.
+			tryFileNameExt := fmt.Sprintf("%s-%d.%s", fileParts[0], i, fileParts[1])
+			tryFullNameExt := path.Join([]string{t.targetDir, tryFileNameExt}...)
+			if !t.knowntargets[tryFullNameExt] {
+				t.knowntargets[tryFullNameExt] = true
+				return tryFullNameExt, nil
+			}
+		default:
 			// Since we got more or fewer parts than expected, just append
 			// to the file as is.
-			tryFileName := fmt.Sprintf("%s%d", fileName, i)
+			tryFileName := fmt.Sprintf("%s-%d", fileName, i)
 			tryFullName := path.Join([]string{t.targetDir, tryFileName}...)
 			if !t.knowntargets[tryFullName] {
 				t.knowntargets[tryFullName] = true
 				return tryFullName, nil
 			}
 		}
-
-		// Since we have a file extension, work around it for the file name append.
-		tryFileNameExt := fmt.Sprintf("%s%d.%s", fileParts[0], i, fileParts[1])
-		tryFullNameExt := path.Join([]string{t.targetDir, tryFileNameExt}...)
-		if !t.knowntargets[tryFullNameExt] {
-			t.knowntargets[tryFullNameExt] = true
-			return tryFullNameExt, nil
-		}
 	}
+
+	// Maybe handle this case with a uuid suffix??  We should almost never get here.
 
 	return "", errors.New("failed to find unique target name")
 }
