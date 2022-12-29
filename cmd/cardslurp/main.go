@@ -1,17 +1,18 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
-
-	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/commandline"
 )
 
 func main() {
 
 	// Get command line options.
-	opts, err := commandline.GetOpts()
+	opts, err := GetOpts()
 	if err != nil {
 		// No point in continuing.
 		panic("error processing command line arguments: " + err.Error())
@@ -67,4 +68,45 @@ func main() {
 	if errorFlag {
 		fmt.Printf("*** Warning - Errors Found ***\n")
 	}
+}
+
+// CmdOpts - All of the options provided from the command line.
+type CmdOpts struct {
+	TargetDir    string
+	MountList    []string
+	DebugMode    bool
+	TransBuff    uint64
+	MaxRetries   uint64
+	VerifyPasses uint64
+}
+
+// GetOpts - Return the command line arguments in a CmdOpts struct
+func GetOpts() (CmdOpts, error) {
+
+	targetDir := flag.String("targetdir", "", "Target directory for the copied files.")
+	mountListStr := flag.String("mountlist", "", "Comma delimited list of mounted cards.")
+	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
+	transBuff := flag.Uint64("transBuff", 8192, "Transfer buffer size.")
+	maxRetries := flag.Uint64("maxretries", 5, "Max number of retry attempts.")
+	verifyPasses := flag.Uint64("verifypasses", 2, "Number of file verify test passes")
+
+	flag.Parse()
+
+	if *targetDir == "" {
+		return CmdOpts{}, errors.New("-targetdir is a required parameter")
+	}
+	if *mountListStr == "" {
+		return CmdOpts{}, errors.New("-mountlist is a required parameter")
+	}
+
+	ml := strings.Split(*mountListStr, ",")
+
+	return CmdOpts{
+		TargetDir:    *targetDir,
+		MountList:    ml,
+		DebugMode:    *debugMode,
+		TransBuff:    *transBuff,
+		MaxRetries:   *maxRetries,
+		VerifyPasses: *verifyPasses,
+	}, nil
 }

@@ -7,7 +7,7 @@ import (
 )
 
 // IsFileSame - Do a byte by byte comparison of the two files.
-func IsFileSame(thingOne string, thingTwo string, transBuff int) (bool, error) {
+func IsFileSame(thingOne string, thingTwo string, transBuff uint64) (bool, error) {
 
 	from, err := os.Open(thingOne)
 	if err != nil {
@@ -67,7 +67,7 @@ func IsFileSame(thingOne string, thingTwo string, transBuff int) (bool, error) {
 }
 
 // NibbleCopy - Copy one file to another a nibble at a time.
-func NibbleCopy(thingOne string, thingTwo string, transBuff int) (bool, error) {
+func NibbleCopy(thingOne string, thingTwo string, transBuff uint64) (bool, error) {
 
 	from, err := os.Open(thingOne)
 	if err != nil {
@@ -97,7 +97,7 @@ func NibbleCopy(thingOne string, thingTwo string, transBuff int) (bool, error) {
 		}
 
 		// Write the last block of bytes one at a time.
-		if byteRead < transBuff {
+		if uint64(byteRead) < transBuff {
 			tag := make([]byte, byteRead)
 
 			for i := 0; i < byteRead; i++ {
@@ -116,7 +116,7 @@ func NibbleCopy(thingOne string, thingTwo string, transBuff int) (bool, error) {
 			return false, errTo
 		}
 
-		if (errFrom == io.EOF) || (byteRead < transBuff) {
+		if (errFrom == io.EOF) || (uint64(byteRead) < transBuff) {
 			break
 		}
 	}

@@ -43,7 +43,7 @@ type foundFile struct {
 
 // LocateFiles - Main spins up a copy of this function for each of the cards we are offloading.
 func LocateFiles(fullPath string, doneMsg chan FinishMsg,
-	targetNameManager *TargetNameGenManager, transBuff int, debugMode bool) {
+	targetNameManager *TargetNameGenManager, transBuff uint64, debugMode bool) {
 
 	rv := new(FinishMsg)
 	rv.FullPath = fullPath

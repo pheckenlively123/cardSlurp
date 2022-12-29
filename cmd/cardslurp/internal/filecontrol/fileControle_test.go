@@ -14,7 +14,6 @@ func TestLocateFiles(t *testing.T) {
 }
 
 func TestRecurseDir(t *testing.T) {
-	// Nothing yet.
 
 	// Base the path of the test source on the home directory variable.  That
 	// way, this test should work with other developers too.  :-P
