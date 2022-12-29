@@ -19,7 +19,7 @@ func TestRecurseDir(t *testing.T) {
 	// way, this test should work with other developers too.  :-P
 	homedir := os.Getenv("HOME")
 
-	foundFiles := make([]foundFile, 0)
+	foundFiles := make([]CardSlurpWork, 0)
 	fullPath := homedir + "/go/src/cardSlurp/cmd/cardslurp/internal/filecontrol/testData/source"
 	debugMode := false
 	err := recurseDir(fullPath, &foundFiles, &debugMode)

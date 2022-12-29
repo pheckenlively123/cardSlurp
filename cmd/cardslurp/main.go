@@ -27,7 +27,7 @@ func main() {
 
 		// Spawn a thread to offload each card at the
 		// same time.
-		go filecontrol.LocateFiles(mountDir, doneQueue, targetNameManager, opts.TransBuff,
+		go filecontrol.LocateFiles(mountDir, doneQueue, targetNameManager,
 			opts.DebugMode)
 		foundCount++
 	}
@@ -75,7 +75,7 @@ type CmdOpts struct {
 	TargetDir    string
 	MountList    []string
 	DebugMode    bool
-	TransBuff    uint64
+	WorkerPool   uint64
 	MaxRetries   uint64
 	VerifyPasses uint64
 }
@@ -86,9 +86,9 @@ func GetOpts() (CmdOpts, error) {
 	targetDir := flag.String("targetdir", "", "Target directory for the copied files.")
 	mountListStr := flag.String("mountlist", "", "Comma delimited list of mounted cards.")
 	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
-	transBuff := flag.Uint64("transBuff", 8192, "Transfer buffer size.")
 	maxRetries := flag.Uint64("maxretries", 5, "Max number of retry attempts.")
 	verifyPasses := flag.Uint64("verifypasses", 2, "Number of file verify test passes")
+	workerPoolSize := flag.Uint64("workerpool", 15, "Size of the worker pool")
 
 	flag.Parse()
 
@@ -105,8 +105,8 @@ func GetOpts() (CmdOpts, error) {
 		TargetDir:    *targetDir,
 		MountList:    ml,
 		DebugMode:    *debugMode,
-		TransBuff:    *transBuff,
 		MaxRetries:   *maxRetries,
 		VerifyPasses: *verifyPasses,
+		WorkerPool:   *workerPoolSize,
 	}, nil
 }

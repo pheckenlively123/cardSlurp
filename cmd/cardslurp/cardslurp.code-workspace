@@ -7,9 +7,6 @@
 			"path": "internal/cardfileutil"
 		},
 		{
-			"path": "internal/commandline"
-		},
-		{
 			"path": "internal/filecontrol"
 		}
 	],
