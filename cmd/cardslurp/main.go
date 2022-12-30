@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
 )
@@ -21,14 +23,28 @@ func main() {
 	foundCount := 0
 	doneQueue := make(chan filecontrol.FinishMsg)
 
-	targetNameManager := filecontrol.NewTargetNameGenManager(opts.TargetDir)
+	targetNameManager, err := filecontrol.NewTargetNameGenManager(
+		opts.TargetDir, opts.VerifyPasses)
+	if err != nil {
+		// No point in continuing
+		panic("error making target name oracle: " + err.Error())
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := &sync.WaitGroup{}
+
+	workerPool := filecontrol.NewWorkerPool(ctx, opts.WorkerPool, wg,
+		targetNameManager, opts.VerifyPasses, opts.DebugMode,
+		opts.MaxRetries)
+	defer workerPool.Close()
 
 	for _, mountDir := range opts.MountList {
 
 		// Spawn a thread to offload each card at the
 		// same time.
 		go filecontrol.LocateFiles(mountDir, doneQueue, targetNameManager,
-			opts.DebugMode)
+			workerPool, opts.DebugMode)
 		foundCount++
 	}
 
@@ -38,7 +54,7 @@ func main() {
 	for i := 0; i < foundCount; i++ {
 		finishResult := <-doneQueue
 		if finishResult.MajorErr != nil {
-			panic("Major error locating and copying files")
+			panic("Major error locating and copying files: " + finishResult.MajorErr.Error())
 		}
 		summary = append(summary, finishResult)
 	}

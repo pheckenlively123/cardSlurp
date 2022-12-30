@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
 
@@ -54,12 +55,12 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 
 	workCh, resultCh := workerPool.GetChannels()
 
+	// Hand off the list of files to the worker pool to copy in parallel.
 	for _, foundFile := range foundFiles {
 		workCh <- foundFile
 	}
 
-	// Loop until all the files to be copied have been accounted for.  If we
-	// just called cancel next, we would leave some files behind.
+	// Loop until all the files to be copied have been accounted for.
 	for i := 0; i < len(foundFiles); i++ {
 
 		res := <-resultCh
@@ -101,9 +102,9 @@ func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) e
 		switch {
 		case dirEntry.IsDir():
 			newPath := fullPath + "/" + dirEntry.Name()
-			recErr := recurseDir(newPath, foundFiles, debugMode)
-			if recErr != nil {
-				return recErr
+			err := recurseDir(newPath, foundFiles, debugMode)
+			if err != nil {
+				return fmt.Errorf("error calling recurseDir: %w", err)
 			}
 		default:
 			// Just grab everything that is not a directory.  If they gave us a
@@ -131,64 +132,129 @@ func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) e
 // instead of sync.RWMutex.
 type TargetNameGenManager struct {
 	sync.Mutex
-	knowntargets map[string]bool
-	targetDir    string
+	knowntargets  map[string]bool
+	targetDir     string
+	verifications uint64
 }
 
 // NewTargetNameGenManager - Constructor for TargetNameGenManager
-func NewTargetNameGenManager(targetDir string) *TargetNameGenManager {
-	return &TargetNameGenManager{
-		Mutex:        sync.Mutex{},
-		knowntargets: make(map[string]bool),
-		targetDir:    targetDir,
+func NewTargetNameGenManager(targetDir string,
+	verifications uint64) (*TargetNameGenManager, error) {
+
+	stat, err := os.Stat(targetDir)
+	if err != nil {
+		return &TargetNameGenManager{}, fmt.Errorf(
+			"error calling stat on targetdir: %w", err)
 	}
+	if !stat.IsDir() {
+		return &TargetNameGenManager{}, fmt.Errorf(
+			"%s is not a directory", targetDir)
+	}
+
+	rv := &TargetNameGenManager{
+		Mutex:         sync.Mutex{},
+		knowntargets:  make(map[string]bool),
+		targetDir:     targetDir,
+		verifications: verifications,
+	}
+
+	files, err := os.ReadDir(targetDir)
+	if err != nil {
+		return &TargetNameGenManager{}, fmt.Errorf(
+			"error calling ReadDir: %w", err)
+	}
+
+	for _, fl := range files {
+
+		if !fl.Type().IsRegular() {
+			return &TargetNameGenManager{}, fmt.Errorf(
+				"target directory should only contain normal files: %s",
+				fl.Name(),
+			)
+		}
+
+		knownName := path.Join(targetDir, fl.Name())
+		rv.knowntargets[knownName] = true
+	}
+
+	return rv, nil
 }
 
-func (t *TargetNameGenManager) GetTargetName(fullName string) (string, error) {
+func (t *TargetNameGenManager) GetTargetName(fullName string) (string, bool, error) {
 
 	// Lock, to protoect t.knowntargets
 	t.Lock()
 	defer t.Unlock()
 
 	_, fileName := path.Split(fullName)
-	tryName := path.Join([]string{t.targetDir, fileName}...)
+	tryName := path.Join(t.targetDir, fileName)
+
+	if strings.HasPrefix(fileName, ".") {
+		fmt.Print("break")
+	}
 
 	if !t.knowntargets[tryName] {
 		t.knowntargets[tryName] = true
-		return tryName, nil
+		return tryName, false, nil
 	}
 
-	// If we got this far, we have a naming conflict.
+	// If we got this far, we have a naming conflict.  Start
+	// by seeing if the file was already copied successfully.
+	// We might be running again, after some sort of failure.
+
+	// Since multiple goroutines may be trying to write the same
+	// file name, we can't assume the file has been written yet,
+	// so we need to check that it is there, before we compare them.
+	_, err := os.Stat(tryName)
+	if err == nil {
+		// We should be safe to compare the files now.
+		same, err := cardfileutil.IsFileSame(fullName, tryName, t.verifications)
+		if err != nil {
+			return "", false, fmt.Errorf("error calling IsFileSame: %w", err)
+		}
+		if same {
+			// Let the caller know that this file can be skipped, because
+			// it was already copied successfully.
+			return tryName, true, nil
+		}
+	}
 
 	// Since we are going to be appending to the filename, we
 	// now need to handle the file extention.
 	fileParts := strings.Split(fileName, ".")
 
-	// A bit cheesy, but this should work
-	for i := 0; i < 10000; i++ {
+	// Use an atomic bomb to crack a walnut.  :-P
+	uuid, err := uuid.NewUUID()
+	if err != nil {
+		return "", false, fmt.Errorf("error making uuid: %w", err)
+	}
+	uuidStr := uuid.String()
 
-		switch {
-		case len(fileParts) == 2:
-			// Since we have a file extension, work around it for the file name append.
-			tryFileNameExt := fmt.Sprintf("%s-%d.%s", fileParts[0], i, fileParts[1])
-			tryFullNameExt := path.Join([]string{t.targetDir, tryFileNameExt}...)
-			if !t.knowntargets[tryFullNameExt] {
-				t.knowntargets[tryFullNameExt] = true
-				return tryFullNameExt, nil
-			}
-		default:
-			// Since we got more or fewer parts than expected, just append
-			// to the file as is.
-			tryFileName := fmt.Sprintf("%s-%d", fileName, i)
-			tryFullName := path.Join([]string{t.targetDir, tryFileName}...)
-			if !t.knowntargets[tryFullName] {
-				t.knowntargets[tryFullName] = true
-				return tryFullName, nil
-			}
-		}
+	var tryFileName string
+	switch len(fileParts) {
+	case 1:
+		tryFileName = fmt.Sprintf("%s-%s", fileParts[0], uuidStr)
+	case 2:
+		tryFileName = fmt.Sprintf("%s-%s.%s", fileParts[0], uuidStr, fileParts[1])
+	default:
+		return "", false, errors.New(
+			"unexpected number of periods in fileName: " + fileName)
 	}
 
-	return "", errors.New("failed to find unique target name")
+	if strings.HasPrefix(tryFileName, ".") {
+		fmt.Print("break")
+	}
+
+	finalTryName := path.Join(t.targetDir, tryFileName)
+
+	if !t.knowntargets[finalTryName] {
+		t.knowntargets[finalTryName] = true
+		return finalTryName, false, nil
+	}
+
+	// Time to give up, and let the caller know we failed.
+
+	return "", false, errors.New("failed to find unique target name")
 }
 
 type WorkerPool struct {
@@ -207,8 +273,8 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 
 	// Make the channels buffered, so we hopefully
 	// won't block writing to them.
-	workInput := make(chan CardSlurpWork, poolSize*poolSize)
-	workOutput := make(chan CardSlurpWork, poolSize*poolSize)
+	workInput := make(chan CardSlurpWork, poolSize*poolSize*poolSize)
+	workOutput := make(chan CardSlurpWork, poolSize*poolSize*poolSize)
 
 	rv := &WorkerPool{
 		wg:         wg,
@@ -236,10 +302,19 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 
 					sourceFile := wMsg.ParentDir + "/" + wMsg.LeafName
 
-					targetName, err := nameMan.GetTargetName(sourceFile)
+					targetName, same, err := nameMan.GetTargetName(sourceFile)
 					if err != nil {
 						// We failed to get a target name, so don't retry.
 						wMsg.MajorErr = fmt.Errorf("error getting target name for %s: %w", sourceFile, err)
+						outWork <- wMsg
+						continue Loop
+					}
+
+					if same {
+						// The naming oracle says this file is already
+						// copied, so skip it.
+						wMsg.Skipped = true
+						fmt.Printf("Skipping %s: (already copied...)\n", targetName)
 						outWork <- wMsg
 						continue Loop
 					}
@@ -272,7 +347,7 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 						wMsg.Copied = true
 						outWork <- wMsg
 					} else {
-						fmt.Printf("File verification did not match for: %s", sourceFile)
+						fmt.Printf("File verification did not match for: %s\n", sourceFile)
 						wMsg.MinorErr = append(wMsg.MinorErr,
 							fmt.Sprintf("verification failed for %s.", sourceFile))
 						if wMsg.RetriesUsed < maxRetries {
@@ -298,7 +373,7 @@ func (w *WorkerPool) GetChannels() (chan CardSlurpWork, chan CardSlurpWork) {
 	return w.workInput, w.workOutput
 }
 
-func (w *WorkerPool) CloseWorkerPool() {
+func (w *WorkerPool) Close() {
 	w.cancel()
 	w.wg.Wait()
 }

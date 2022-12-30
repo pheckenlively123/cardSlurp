@@ -8,12 +8,12 @@ import (
 
 // IsFileSame - Do a byte by byte comparison of the two files.
 // Iterations are the number of times we should compare the two files.
-func IsFileSame(thingOne string, toFile string,
+func IsFileSame(fromFile string, toFile string,
 	iterations uint64) (bool, error) {
 
 	for i := 0; i < int(iterations); i++ {
 
-		fromBytes, err := os.ReadFile(thingOne)
+		fromBytes, err := os.ReadFile(fromFile)
 		if err != nil {
 			return false, fmt.Errorf("error reading from file: %w", err)
 		}
