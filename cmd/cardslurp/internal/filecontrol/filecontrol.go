@@ -235,7 +235,7 @@ func (t *TargetNameGenManager) GetTargetName(fullName string) (string, bool, err
 	case 1:
 		tryFileName = fmt.Sprintf("%s-%s", fileParts[0], uuidStr)
 	case 2:
-		tryFileName = fmt.Sprintf("%s-%s.%s", fileParts[0], uuidStr, fileParts[1])
+		tryFileName = fmt.Sprintf("%s_%s.%s", fileParts[0], uuidStr, fileParts[1])
 	default:
 		return "", false, errors.New(
 			"unexpected number of periods in fileName: " + fileName)

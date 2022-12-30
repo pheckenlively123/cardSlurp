@@ -33,7 +33,7 @@ func TestNewWorkerPool(t *testing.T) {
 
 	homedir := os.Getenv("HOME")
 
-	testDir := homedir + "/go/src/cardSlurp/cmd/cardslurp/internal/filecontrol/testData"
+	testDir := homedir + "/go/src/github.com/cardSlurp/cmd/cardslurp/internal/filecontrol/testData"
 
 	cardA := testDir + "/source/A"
 	cardB := testDir + "/source/B"
