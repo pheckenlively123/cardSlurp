@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 // The tests are going to take some thought.  I can probably test recurseDirTest
@@ -65,12 +66,25 @@ func TestNewWorkerPool(t *testing.T) {
 
 	doneQueue := make(chan FinishMsg)
 
-	go LocateFiles(cardA, doneQueue, nameManager, workerPool, true)
-	go LocateFiles(cardB, doneQueue, nameManager, workerPool, true)
-	go LocateFiles(cardC, doneQueue, nameManager, workerPool, true)
-	go LocateFiles(cardD, doneQueue, nameManager, workerPool, true)
+	// This is a slightly unconventional use of a RWMutex.
+	// The LocateFiles goroutines wait for RLock() to complete.
+	// If we don't stage the card copies this way, the files
+	// from one card will fill the queue, and the card copy will
+	// happen in serial fashion.
+	goSignal := &sync.RWMutex{}
+	goSignal.Lock()
+
+	go LocateFiles(cardA, doneQueue, nameManager, workerPool, goSignal, true)
+	go LocateFiles(cardB, doneQueue, nameManager, workerPool, goSignal, true)
+	go LocateFiles(cardC, doneQueue, nameManager, workerPool, goSignal, true)
+	go LocateFiles(cardD, doneQueue, nameManager, workerPool, goSignal, true)
 
 	foundCount := 4
+
+	// One second should be enough time for LocateFiles
+	// to have recursed the directory.
+	time.Sleep(1 * time.Second)
+	goSignal.Unlock()
 
 	summary := make([]FinishMsg, 0)
 

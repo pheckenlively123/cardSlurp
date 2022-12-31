@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
 )
@@ -39,14 +40,37 @@ func main() {
 		opts.MaxRetries)
 	defer workerPool.Close()
 
+	// This idea with the RWMutex did not work nearly as well
+	// as I thought it would.  I think I'm going to have to gather
+	// the list of files from all the cards, and make a master list.
+	// Then sort the list based on file ctime or mtime.  Then feed the
+	// List into the worker pool.  This is going to require
+	// some refactoring.  I can't wait for each LocateFiles
+	// to send back it's done message then.  Probably move that
+	// to a sync.WaitGroup.  I already have a wg from the workerPool.
+	// Probably leverage that one, to tell me when each LocateFiles is done.
+
+	// Normally, the unlock further down would be a signal it is safe
+	// to read.  In this case, it tells the goroutine for each card
+	// that it can proceed.  This allows us to offload the cards
+	// in parallel.  Otherwise, the first card to start locating files
+	// fills up the top of the work queue.
+	goSignal := &sync.RWMutex{}
+	goSignal.Lock()
+
 	for _, mountDir := range opts.MountList {
 
 		// Spawn a thread to offload each card at the
 		// same time.
 		go filecontrol.LocateFiles(mountDir, doneQueue, targetNameManager,
-			workerPool, opts.DebugMode)
+			workerPool, goSignal, opts.DebugMode)
 		foundCount++
 	}
+
+	// One second should be enough time for LocateFiles
+	// to have recursed the directory.
+	time.Sleep(1 * time.Second)
+	goSignal.Unlock()
 
 	summary := make([]filecontrol.FinishMsg, 0)
 

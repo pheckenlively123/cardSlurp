@@ -38,7 +38,7 @@ type CardSlurpWork struct {
 // LocateFiles - Main spins up a copy of this function for each of the cards we are offloading.
 func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 	targetNameManager *TargetNameGenManager, workerPool *WorkerPool,
-	debugMode bool) {
+	goSignal *sync.RWMutex, debugMode bool) {
 
 	rv := new(FinishMsg)
 	rv.FullPath = fullPath
@@ -54,6 +54,8 @@ func LocateFiles(fullPath string, doneMsg chan FinishMsg,
 	}
 
 	workCh, resultCh := workerPool.GetChannels()
+
+	goSignal.RLock()
 
 	// Hand off the list of files to the worker pool to copy in parallel.
 	for _, foundFile := range foundFiles {
@@ -349,11 +351,12 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 					} else {
 						fmt.Printf("File verification did not match for: %s\n", sourceFile)
 						wMsg.MinorErr = append(wMsg.MinorErr,
-							fmt.Sprintf("verification failed for %s.", sourceFile))
+							fmt.Sprintf("verification failed for: %s", sourceFile))
 						if wMsg.RetriesUsed < maxRetries {
 							// Send the work request back for another try.
 							wMsg.RetriesUsed++
 							inWork <- wMsg
+							fmt.Printf("Retrying: %s\n", sourceFile)
 						} else {
 							wMsg.MajorErr = fmt.Errorf("%s is out of retries", sourceFile)
 							outWork <- wMsg
