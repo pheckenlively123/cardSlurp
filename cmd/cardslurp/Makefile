@@ -14,9 +14,6 @@ linux_intel: clean
 
 all: cardslurp
 
+
 clean:
 	rm -f cardslurp
-
-install: all
-	mkdir -p $(TARGET)
-	cp cardslurp $(TARGET)
