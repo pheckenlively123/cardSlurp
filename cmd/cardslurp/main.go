@@ -1,67 +1,96 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
+	"strings"
 
-	"github.com/pheckenlively123/cardSlurp/internal/commandline"
-	"github.com/pheckenlively123/cardSlurp/internal/filecontrol"
+	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
 )
 
 func main() {
 
 	// Get command line options.
-	opts, err := commandline.GetOpts()
+	opts, err := GetOpts()
 	if err != nil {
 		// No point in continuing.
 		panic("error processing command line arguments: " + err.Error())
 	}
 
-	// Build the channel the other go routines will use to get the
-	// target filenames.
-	getTargetQueue := make(chan filecontrol.GetFileNameMsg)
-
-	go filecontrol.TargetNameGen(getTargetQueue, opts.TargetDir, opts.TransBuff, opts.DebugMode)
-
-	doneQueue := make(chan filecontrol.FinishMsg)
-
-	for _, mp := range opts.MountList {
-		go filecontrol.LocateFiles(mp, doneQueue, getTargetQueue, opts.TransBuff, opts.DebugMode)
+	nameOracle, err := filecontrol.NewTargetNameGenManager(
+		opts.TargetDir, opts.VerifyPasses)
+	if err != nil {
+		// No point in continuing
+		panic("error making target name oracle: " + err.Error())
 	}
 
-	summary := make([]filecontrol.FinishMsg, 0)
+	workerPool := filecontrol.NewWorkerPool(opts.WorkerPool,
+		nameOracle, opts.VerifyPasses, opts.DebugMode,
+		opts.MaxRetries)
 
-	// Get results from the worker threads.
-	for i := 0; i < len(opts.MountList); i++ {
-		finishResult := <-doneQueue
-		if finishResult.MajorErr != nil {
-			panic("Major error locating and copying files")
-		}
-		summary = append(summary, finishResult)
+	err = filecontrol.OrchestrateLocate(opts.MountList, workerPool, opts.DebugMode)
+	if err != nil {
+		// No point in continuing
+		panic("error recursing card directories: " + err.Error())
 	}
 
-	errorFlag := false
+	finalResults, err := workerPool.ParallelFileCopy()
+	if err != nil {
+		panic("major error during parallel file copy: " + err.Error())
+	}
 
-	// Print the summary results.
-	for x := range summary {
+	fmt.Printf("Skipped: %d - Copied: %d - Retries: %d\n",
+		finalResults.Skipped, finalResults.Copied, finalResults.Retries)
 
-		r := summary[x]
+	if len(finalResults.MinorErrs) == 0 {
+		fmt.Printf("(No errors.)\n")
+	} else {
+		fmt.Printf("*** ERRORS ***\n")
 
-		fmt.Printf("Card path: %s\n", r.FullPath)
-		fmt.Printf("Skipped: %d - Copied: %d\n", r.Skipped, r.Copied)
-
-		if len(r.MinorErrs) == 0 {
-			fmt.Printf("(No errors.)\n")
-		} else {
-			fmt.Printf("*** ERRORS ***\n")
-			errorFlag = true
-
-			for y := range r.MinorErrs {
-				fmt.Printf("%s\n", r.MinorErrs[y])
-			}
+		for y := range finalResults.MinorErrs {
+			fmt.Printf("%s\n", finalResults.MinorErrs[y])
 		}
 	}
+}
 
-	if errorFlag {
-		fmt.Printf("*** Warning - Errors Found ***\n")
+// CmdOpts - All of the options provided from the command line.
+type CmdOpts struct {
+	TargetDir    string
+	MountList    []string
+	DebugMode    bool
+	WorkerPool   uint64
+	MaxRetries   uint64
+	VerifyPasses uint64
+}
+
+// GetOpts - Return the command line arguments in a CmdOpts struct
+func GetOpts() (CmdOpts, error) {
+
+	targetDir := flag.String("targetdir", "", "Target directory for the copied files.")
+	mountListStr := flag.String("mountlist", "", "Comma delimited list of mounted cards.")
+	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
+	maxRetries := flag.Uint64("maxretries", 5, "Max number of retry attempts.")
+	verifyPasses := flag.Uint64("verifypasses", 2, "Number of file verify test passes")
+	workerPoolSize := flag.Uint64("workerpool", 15, "Size of the worker pool")
+
+	flag.Parse()
+
+	if *targetDir == "" {
+		return CmdOpts{}, errors.New("-targetdir is a required parameter")
 	}
+	if *mountListStr == "" {
+		return CmdOpts{}, errors.New("-mountlist is a required parameter")
+	}
+
+	ml := strings.Split(*mountListStr, ",")
+
+	return CmdOpts{
+		TargetDir:    *targetDir,
+		MountList:    ml,
+		DebugMode:    *debugMode,
+		MaxRetries:   *maxRetries,
+		VerifyPasses: *verifyPasses,
+		WorkerPool:   *workerPoolSize,
+	}, nil
 }
