@@ -1,12 +1,9 @@
 package filecontrol
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"sync"
 	"testing"
-	"time"
 )
 
 // The tests are going to take some thought.  I can probably test recurseDirTest
@@ -41,8 +38,6 @@ func TestNewWorkerPool(t *testing.T) {
 	cardC := testDir + "/source/C"
 	cardD := testDir + "/source/D"
 
-	t.Log(cardA, cardB, cardC, cardD)
-
 	targetDir := testDir + "/target"
 
 	// Try to remove the targetdir, in case a test died in the middle.
@@ -53,73 +48,34 @@ func TestNewWorkerPool(t *testing.T) {
 		t.Fatal("error making targetdir: " + err.Error())
 	}
 
-	nameManager, err := NewTargetNameGenManager(targetDir, 2)
+	nameOracle, err := NewTargetNameGenManager(targetDir, 2)
 	if err != nil {
 		t.Fatal("error making name oracle: " + err.Error())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	wg := &sync.WaitGroup{}
 
-	workerPool := NewWorkerPool(ctx, 15, wg, nameManager, 2, true, 5)
-	defer workerPool.Close()
+	workerPool := NewWorkerPool(15, nameOracle, 2, true, 5)
 
-	doneQueue := make(chan FinishMsg)
-
-	// This is a slightly unconventional use of a RWMutex.
-	// The LocateFiles goroutines wait for RLock() to complete.
-	// If we don't stage the card copies this way, the files
-	// from one card will fill the queue, and the card copy will
-	// happen in serial fashion.
-	goSignal := &sync.RWMutex{}
-	goSignal.Lock()
-
-	go LocateFiles(cardA, doneQueue, nameManager, workerPool, goSignal, true)
-	go LocateFiles(cardB, doneQueue, nameManager, workerPool, goSignal, true)
-	go LocateFiles(cardC, doneQueue, nameManager, workerPool, goSignal, true)
-	go LocateFiles(cardD, doneQueue, nameManager, workerPool, goSignal, true)
-
-	foundCount := 4
-
-	// One second should be enough time for LocateFiles
-	// to have recursed the directory.
-	time.Sleep(1 * time.Second)
-	goSignal.Unlock()
-
-	summary := make([]FinishMsg, 0)
-
-	// Get results
-	for i := 0; i < foundCount; i++ {
-		finishMsg := <-doneQueue
-		if finishMsg.MajorErr != nil {
-			t.Fatal("got major error from one of the cards: " + finishMsg.MajorErr.Error())
-		}
-		summary = append(summary, finishMsg)
+	err = OrchestrateLocate([]string{cardA, cardB, cardC, cardD},
+		workerPool, true)
+	if err != nil {
+		t.Fatal("unexpected from OrchestrateLocate: " + err.Error())
 	}
 
-	errorFlag := false
+	finalResults, err := workerPool.ParallelFileCopy()
+	if err != nil {
+		t.Fatal("unexpected error from parallel file copy: " + err.Error())
+	}
 
 	// Print the summary results.
-	for x := range summary {
+	fmt.Printf("Skipped: %d - Copied: %d\n", finalResults.Skipped,
+		finalResults.Copied)
+	if len(finalResults.MinorErrs) == 0 {
+		fmt.Printf("(No errors.)\n")
+	} else {
+		fmt.Printf("*** ERRORS ***\n")
 
-		r := summary[x]
-
-		fmt.Printf("Card path: %s\n", r.FullPath)
-		fmt.Printf("Skipped: %d - Copied: %d\n", r.Skipped, r.Copied)
-
-		if len(r.MinorErrs) == 0 {
-			fmt.Printf("(No errors.)\n")
-		} else {
-			fmt.Printf("*** ERRORS ***\n")
-			errorFlag = true
-
-			for y := range r.MinorErrs {
-				fmt.Printf("%s\n", r.MinorErrs[y])
-			}
+		for y := range finalResults.MinorErrs {
+			fmt.Printf("%s\n", finalResults.MinorErrs[y])
 		}
-	}
-
-	if errorFlag {
-		fmt.Printf("*** Warning - Errors Found ***\n")
 	}
 }

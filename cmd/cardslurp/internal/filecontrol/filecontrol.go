@@ -6,88 +6,100 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
 
-// FinishMsg - passed back to main from the per card worker threads.
-type FinishMsg struct {
-	FullPath  string
-	Skipped   int
-	Copied    int
-	MajorErr  error
+// WorkerPoolFinishMsg - passed back to main from the per card worker threads.
+type WorkerPoolFinishMsg struct {
+	Skipped   uint64
+	Copied    uint64
+	Retries   uint64
 	MinorErrs []string
+}
+
+type LocateFilesFinishMsg struct {
+	ParentDir   string
+	FileCount   uint64
+	LocateError error
 }
 
 // Put the work request and the results in a single structure.
 // This makes doing retries easier.
 type CardSlurpWork struct {
-	ParentDir   string
-	LeafName    string
-	LeafMode    os.FileMode
-	Skipped     bool
-	Copied      bool
-	RetriesUsed uint64
-	MinorErr    []string
-	MajorErr    error
+	parentDir   string
+	fileName    string
+	fileTime    time.Time
+	skipped     bool
+	copied      bool
+	retriesUsed uint64
+	minorErr    []string
+	majorErr    error
 }
 
-// LocateFiles - Main spins up a copy of this function for each of the cards we are offloading.
-func LocateFiles(fullPath string, doneMsg chan FinishMsg,
-	targetNameManager *TargetNameGenManager, workerPool *WorkerPool,
-	goSignal *sync.RWMutex, debugMode bool) {
+func OrchestrateLocate(cardPathList []string, workerPool *WorkerPool,
+	debugMode bool) error {
 
-	rv := new(FinishMsg)
-	rv.FullPath = fullPath
+	finishCh := make(chan LocateFilesFinishMsg)
+
+	wg := &sync.WaitGroup{}
+
+	for _, cp := range cardPathList {
+		wg.Add(1)
+		go locateFiles(cp, wg, workerPool, finishCh, debugMode)
+	}
+
+	for i := 0; i < len(cardPathList); i++ {
+
+		locMsg := <-finishCh
+		if locMsg.LocateError != nil {
+			// If we got a major error, no point in continuing.
+			return fmt.Errorf("major error locating files for %s: %w",
+				locMsg.ParentDir, locMsg.LocateError)
+		}
+
+		fmt.Printf("Located %d files in: %s\n", locMsg.FileCount, locMsg.ParentDir)
+	}
+
+	// The LocateFiles goroutines should all have returned by this point,
+	// so this is a belt + suspenders measure.
+	wg.Wait()
+
+	return nil
+}
+
+// locateFiles - Recurse each of the cards for all files.
+func locateFiles(fullPath string, wg *sync.WaitGroup,
+	workerPool *WorkerPool, locateFinishCh chan LocateFilesFinishMsg,
+	debugMode bool) {
+
+	defer wg.Done()
+
+	rv := LocateFilesFinishMsg{
+		ParentDir: fullPath,
+	}
 
 	foundFiles := make([]CardSlurpWork, 0)
 
 	err := recurseDir(fullPath, &foundFiles, &debugMode)
 	if err != nil {
 		// Punch out early
-		rv.MajorErr = fmt.Errorf("error recursing path %s: %w", fullPath, err)
-		doneMsg <- *rv
+		rv.LocateError = fmt.Errorf("error recursing path %s: %w", fullPath, err)
 		return
 	}
 
-	workCh, resultCh := workerPool.GetChannels()
-
-	goSignal.RLock()
-
 	// Hand off the list of files to the worker pool to copy in parallel.
 	for _, foundFile := range foundFiles {
-		workCh <- foundFile
+		workerPool.queueFile(foundFile)
+		rv.FileCount++
 	}
 
-	// Loop until all the files to be copied have been accounted for.
-	for i := 0; i < len(foundFiles); i++ {
-
-		res := <-resultCh
-
-		if res.Skipped {
-			rv.Skipped++
-		}
-
-		if res.Copied {
-			rv.Copied++
-		}
-
-		if len(res.MinorErr) != 0 {
-			rv.MinorErrs = append(rv.MinorErrs, res.MinorErr...)
-		}
-
-		if res.MajorErr != nil {
-			rv.MajorErr = fmt.Errorf("major error copying %s: %w", res.LeafName, res.MajorErr)
-			// Major errors kill the copy process early.
-			break
-		}
-	}
-
-	// Let the main routine know we are done.
-	doneMsg <- *rv
+	locateFinishCh <- rv
 }
 
 func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) error {
@@ -111,10 +123,15 @@ func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) e
 		default:
 			// Just grab everything that is not a directory.  If they gave us a
 			// card with special files, we will just get errors trying to copy.
+			fileInfo, err := dirEntry.Info()
+			if err != nil {
+				return fmt.Errorf(
+					"error calling Info() for %s: %w", dirEntry.Name(), err)
+			}
 			foundRec := CardSlurpWork{
-				ParentDir: fullPath,
-				LeafName:  dirEntry.Name(),
-				LeafMode:  dirEntry.Type(),
+				parentDir: fullPath,
+				fileName:  dirEntry.Name(),
+				fileTime:  fileInfo.ModTime(),
 			}
 
 			*foundFiles = append(*foundFiles, foundRec)
@@ -182,7 +199,7 @@ func NewTargetNameGenManager(targetDir string,
 	return rv, nil
 }
 
-func (t *TargetNameGenManager) GetTargetName(fullName string) (string, bool, error) {
+func (t *TargetNameGenManager) getTargetName(fullName string) (string, bool, error) {
 
 	// Lock, to protoect t.knowntargets
 	t.Lock()
@@ -190,10 +207,6 @@ func (t *TargetNameGenManager) GetTargetName(fullName string) (string, bool, err
 
 	_, fileName := path.Split(fullName)
 	tryName := path.Join(t.targetDir, fileName)
-
-	if strings.HasPrefix(fileName, ".") {
-		fmt.Print("break")
-	}
 
 	if !t.knowntargets[tryName] {
 		t.knowntargets[tryName] = true
@@ -243,10 +256,6 @@ func (t *TargetNameGenManager) GetTargetName(fullName string) (string, bool, err
 			"unexpected number of periods in fileName: " + fileName)
 	}
 
-	if strings.HasPrefix(tryFileName, ".") {
-		fmt.Print("break")
-	}
-
 	finalTryName := path.Join(t.targetDir, tryFileName)
 
 	if !t.knowntargets[finalTryName] {
@@ -260,32 +269,56 @@ func (t *TargetNameGenManager) GetTargetName(fullName string) (string, bool, err
 }
 
 type WorkerPool struct {
-	wg         *sync.WaitGroup
-	cancel     context.CancelFunc
-	workInput  chan CardSlurpWork
-	workOutput chan CardSlurpWork
+	// wg         *sync.WaitGroup
+	poolSize      uint64
+	queuedWork    []CardSlurpWork
+	nameOracle    *TargetNameGenManager
+	debug         bool
+	verifications uint64
+	maxRetries    uint64
 }
 
-func NewWorkerPool(ctx context.Context, poolSize uint64,
-	wg *sync.WaitGroup, nameManager *TargetNameGenManager,
+func NewWorkerPool(poolSize uint64, nameManager *TargetNameGenManager,
 	verifications uint64, debugMode bool,
-	maxTriesAllowed uint64) *WorkerPool {
-
-	workCtx, cancel := context.WithCancel(ctx)
-
-	// Make the channels buffered, so we hopefully
-	// won't block writing to them.
-	workInput := make(chan CardSlurpWork, poolSize*poolSize*poolSize)
-	workOutput := make(chan CardSlurpWork, poolSize*poolSize*poolSize)
+	maxRetries uint64) *WorkerPool {
 
 	rv := &WorkerPool{
-		wg:         wg,
-		cancel:     cancel,
-		workInput:  workInput,
-		workOutput: workOutput,
+		poolSize:      poolSize,
+		queuedWork:    make([]CardSlurpWork, 0),
+		nameOracle:    nameManager,
+		debug:         debugMode,
+		verifications: verifications,
+		maxRetries:    maxRetries,
 	}
 
-	for i := 0; i < int(poolSize); i++ {
+	return rv
+}
+
+func (w *WorkerPool) queueFile(workReq CardSlurpWork) {
+	w.queuedWork = append(w.queuedWork, workReq)
+}
+
+func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
+
+	// Start by sorting the queued files by modification time.
+	// As long as the two camaras time are close, this should cause
+	// the cards to offload in parallel.
+	sort.Slice(w.queuedWork, func(i, j int) bool {
+		return w.queuedWork[i].fileTime.UnixNano() < w.queuedWork[j].fileTime.UnixNano()
+	})
+
+	// Make the input and output channels the same size as our work queue,
+	// so we don't block writing.
+
+	inputWork := make(chan CardSlurpWork, len(w.queuedWork))
+	outputWork := make(chan CardSlurpWork, len(w.queuedWork))
+
+	// Fire up the worker pool to copy in parallel.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < int(w.poolSize); i++ {
 
 		wg.Add(1)
 		go func(wkCtx context.Context, wg *sync.WaitGroup,
@@ -302,12 +335,12 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 					return
 				case wMsg := <-inWork:
 
-					sourceFile := wMsg.ParentDir + "/" + wMsg.LeafName
+					sourceFile := wMsg.parentDir + "/" + wMsg.fileName
 
-					targetName, same, err := nameMan.GetTargetName(sourceFile)
+					targetName, same, err := nameMan.getTargetName(sourceFile)
 					if err != nil {
 						// We failed to get a target name, so don't retry.
-						wMsg.MajorErr = fmt.Errorf("error getting target name for %s: %w", sourceFile, err)
+						wMsg.majorErr = fmt.Errorf("error getting target name for %s: %w", sourceFile, err)
 						outWork <- wMsg
 						continue Loop
 					}
@@ -315,7 +348,7 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 					if same {
 						// The naming oracle says this file is already
 						// copied, so skip it.
-						wMsg.Skipped = true
+						wMsg.skipped = true
 						fmt.Printf("Skipping %s: (already copied...)\n", targetName)
 						outWork <- wMsg
 						continue Loop
@@ -328,7 +361,7 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 					_, err = cardfileutil.FileCopy(sourceFile, targetName)
 					if err != nil {
 						// Handle an error copying the file as a major error.
-						wMsg.MajorErr = fmt.Errorf(
+						wMsg.majorErr = fmt.Errorf(
 							"error copying %s to %s: %w", sourceFile, targetName, err)
 						outWork <- wMsg
 						continue Loop
@@ -337,7 +370,7 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 					sameStat, err := cardfileutil.IsFileSame(sourceFile, targetName, verify)
 					if err != nil {
 						// Handle an error calling IsFileSame as a major error.
-						wMsg.MajorErr = fmt.Errorf(
+						wMsg.majorErr = fmt.Errorf(
 							"error calling IsFileSame for %s: %w", sourceFile, err)
 						outWork <- wMsg
 						continue Loop
@@ -345,38 +378,72 @@ func NewWorkerPool(ctx context.Context, poolSize uint64,
 
 					if sameStat {
 						// Handle a verification error as a minor error.
-						fmt.Printf("%s/%s - Done\n", wMsg.ParentDir, wMsg.LeafName)
-						wMsg.Copied = true
+						fmt.Printf("%s/%s - Done\n", wMsg.parentDir, wMsg.fileName)
+						wMsg.copied = true
 						outWork <- wMsg
 					} else {
 						fmt.Printf("File verification did not match for: %s\n", sourceFile)
-						wMsg.MinorErr = append(wMsg.MinorErr,
+						wMsg.minorErr = append(wMsg.minorErr,
 							fmt.Sprintf("verification failed for: %s", sourceFile))
-						if wMsg.RetriesUsed < maxRetries {
+						if wMsg.retriesUsed < maxRetries {
 							// Send the work request back for another try.
-							wMsg.RetriesUsed++
+							wMsg.retriesUsed++
 							inWork <- wMsg
 							fmt.Printf("Retrying: %s\n", sourceFile)
 						} else {
-							wMsg.MajorErr = fmt.Errorf("%s is out of retries", sourceFile)
+							wMsg.majorErr = fmt.Errorf("%s is out of retries", sourceFile)
 							outWork <- wMsg
 						}
 					}
 				}
 			}
 
-		}(workCtx, wg, nameManager, workInput, workOutput,
-			verifications, debugMode, maxTriesAllowed)
+		}(ctx, wg, w.nameOracle, inputWork, outputWork,
+			w.verifications, w.debug, w.maxRetries)
 	}
 
-	return rv
-}
+	// Now that the worker pool is running, feed all the work
+	// requests into it.
+	for _, wr := range w.queuedWork {
+		inputWork <- wr
+	}
 
-func (w *WorkerPool) GetChannels() (chan CardSlurpWork, chan CardSlurpWork) {
-	return w.workInput, w.workOutput
-}
+	rv := WorkerPoolFinishMsg{
+		MinorErrs: make([]string, 0),
+	}
 
-func (w *WorkerPool) Close() {
-	w.cancel()
-	w.wg.Wait()
+	// Suck out the results
+	for i := 0; i < len(w.queuedWork); i++ {
+		res := <-outputWork
+
+		// Handle major errors first.
+		if res.majorErr != nil {
+			return WorkerPoolFinishMsg{}, fmt.Errorf(
+				"major error copying %s: %w", res.fileName, res.majorErr,
+			)
+		}
+
+		if res.skipped {
+			rv.Skipped++
+		}
+
+		if res.copied {
+			rv.Copied++
+		}
+
+		if res.retriesUsed != 0 {
+			rv.Retries += res.retriesUsed
+		}
+
+		if len(res.minorErr) != 0 {
+			rv.MinorErrs = append(rv.MinorErrs, res.minorErr...)
+		}
+	}
+
+	// Send the worker pool the all done signal, and wait for
+	// the worker goroutines to return
+	cancel()
+	wg.Wait()
+
+	return rv, nil
 }

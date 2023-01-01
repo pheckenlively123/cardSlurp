@@ -1,13 +1,10 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
 )
@@ -21,92 +18,39 @@ func main() {
 		panic("error processing command line arguments: " + err.Error())
 	}
 
-	foundCount := 0
-	doneQueue := make(chan filecontrol.FinishMsg)
-
-	targetNameManager, err := filecontrol.NewTargetNameGenManager(
+	nameOracle, err := filecontrol.NewTargetNameGenManager(
 		opts.TargetDir, opts.VerifyPasses)
 	if err != nil {
 		// No point in continuing
 		panic("error making target name oracle: " + err.Error())
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	wg := &sync.WaitGroup{}
-
-	workerPool := filecontrol.NewWorkerPool(ctx, opts.WorkerPool, wg,
-		targetNameManager, opts.VerifyPasses, opts.DebugMode,
+	workerPool := filecontrol.NewWorkerPool(opts.WorkerPool,
+		nameOracle, opts.VerifyPasses, opts.DebugMode,
 		opts.MaxRetries)
-	defer workerPool.Close()
 
-	// This idea with the RWMutex did not work nearly as well
-	// as I thought it would.  I think I'm going to have to gather
-	// the list of files from all the cards, and make a master list.
-	// Then sort the list based on file ctime or mtime.  Then feed the
-	// List into the worker pool.  This is going to require
-	// some refactoring.  I can't wait for each LocateFiles
-	// to send back it's done message then.  Probably move that
-	// to a sync.WaitGroup.  I already have a wg from the workerPool.
-	// Probably leverage that one, to tell me when each LocateFiles is done.
-
-	// Normally, the unlock further down would be a signal it is safe
-	// to read.  In this case, it tells the goroutine for each card
-	// that it can proceed.  This allows us to offload the cards
-	// in parallel.  Otherwise, the first card to start locating files
-	// fills up the top of the work queue.
-	goSignal := &sync.RWMutex{}
-	goSignal.Lock()
-
-	for _, mountDir := range opts.MountList {
-
-		// Spawn a thread to offload each card at the
-		// same time.
-		go filecontrol.LocateFiles(mountDir, doneQueue, targetNameManager,
-			workerPool, goSignal, opts.DebugMode)
-		foundCount++
+	err = filecontrol.OrchestrateLocate(opts.MountList, workerPool, opts.DebugMode)
+	if err != nil {
+		// No point in continuing
+		panic("error recursing card directories: " + err.Error())
 	}
 
-	// One second should be enough time for LocateFiles
-	// to have recursed the directory.
-	time.Sleep(1 * time.Second)
-	goSignal.Unlock()
+	finalResults, err := workerPool.ParallelFileCopy()
+	if err != nil {
+		panic("major error during parallel file copy: " + err.Error())
+	}
 
-	summary := make([]filecontrol.FinishMsg, 0)
+	fmt.Printf("Skipped: %d - Copied: %d - Retries: %d\n",
+		finalResults.Skipped, finalResults.Copied, finalResults.Retries)
 
-	// Get results from the worker threads.
-	for i := 0; i < foundCount; i++ {
-		finishResult := <-doneQueue
-		if finishResult.MajorErr != nil {
-			panic("Major error locating and copying files: " + finishResult.MajorErr.Error())
+	if len(finalResults.MinorErrs) == 0 {
+		fmt.Printf("(No errors.)\n")
+	} else {
+		fmt.Printf("*** ERRORS ***\n")
+
+		for y := range finalResults.MinorErrs {
+			fmt.Printf("%s\n", finalResults.MinorErrs[y])
 		}
-		summary = append(summary, finishResult)
-	}
-
-	errorFlag := false
-
-	// Print the summary results.
-	for x := range summary {
-
-		r := summary[x]
-
-		fmt.Printf("Card path: %s\n", r.FullPath)
-		fmt.Printf("Skipped: %d - Copied: %d\n", r.Skipped, r.Copied)
-
-		if len(r.MinorErrs) == 0 {
-			fmt.Printf("(No errors.)\n")
-		} else {
-			fmt.Printf("*** ERRORS ***\n")
-			errorFlag = true
-
-			for y := range r.MinorErrs {
-				fmt.Printf("%s\n", r.MinorErrs[y])
-			}
-		}
-	}
-
-	if errorFlag {
-		fmt.Printf("*** Warning - Errors Found ***\n")
 	}
 }
 
