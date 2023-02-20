@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "./internal/cardfileutil"
+		},
+		{
+			"path": "./internal/filecontrol"
+		}
+	],
+	"settings": {}
+}
