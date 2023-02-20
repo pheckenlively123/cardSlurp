@@ -2,64 +2,91 @@ package cardfileutil
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 )
 
-// IsFileSame - Do a byte by byte comparison of the two files.
-func IsFileSame(thingOne string, thingTwo string, transBuff int) (bool, error) {
+// Making the functions in this package into methods doesn't really add
+// much to the functionality.  The big benefit is that we can mock this
+// with an interface elsewhere.
+type CardFileUtil struct {
+	transBufferSize    uint64
+	verificationPasses uint64
+}
 
-	from, err := os.Open(thingOne)
+func NewCardFileUtil(transBufferSize uint64,
+	verificationPasses uint64) *CardFileUtil {
+	return &CardFileUtil{
+		transBufferSize:    transBufferSize,
+		verificationPasses: verificationPasses,
+	}
+}
+
+// IsFileSame - Do a byte by byte comparison of the two files.
+func (c *CardFileUtil) IsFileSame(fromFile string, toFile string) (bool, error) {
+
+	// While it is tempting to
+
+	from, err := os.Open(fromFile)
 	if err != nil {
-		return false, errors.New("Error opening: " + thingOne)
+		return false, errors.New("Error opening: " + fromFile)
 	}
 	defer from.Close()
 
-	to, err := os.Open(thingTwo)
+	to, err := os.Open(toFile)
 	if err != nil {
-		return false, errors.New("Error opening: " + thingTwo)
+		return false, errors.New("Error opening: " + toFile)
 	}
 	defer to.Close()
 
-	nibFrom := make([]byte, transBuff)
-	nibTo := make([]byte, transBuff)
+	nibFrom := make([]byte, c.transBufferSize)
+	nibTo := make([]byte, c.transBufferSize)
 
-	for {
-		readFrom, errFrom := from.Read(nibFrom)
-		readTo, errTo := to.Read(nibTo)
+	for i := 0; i < int(c.verificationPasses); i++ {
 
-		if (errFrom == io.EOF) && (errTo == io.EOF) {
-			break
-		}
+	VERIFYLOOP:
+		for {
+			readFrom, errFrom := from.Read(nibFrom)
+			readTo, errTo := to.Read(nibTo)
 
-		if readFrom != readTo {
-			return false, nil
-		}
+			if errors.Is(errFrom, io.EOF) && errors.Is(errTo, io.EOF) {
+				// The two files finished at the same time, which is
+				// what we want, if they are the same.
+				break VERIFYLOOP
+			}
 
-		for x := range nibFrom {
-			if nibFrom[x] != nibTo[x] {
+			if readFrom != readTo {
 				return false, nil
 			}
-		}
 
-		// One of the files finished before the other.
-		if errFrom == io.EOF {
-			return false, nil
-		}
+			for x := range nibFrom {
+				if nibFrom[x] != nibTo[x] {
+					return false, nil
+				}
+			}
 
-		// One of the files finished before the other.
-		if errTo == io.EOF {
-			return false, nil
-		}
+			// One of the files finished before the other.
+			if errors.Is(errFrom, io.EOF) {
+				return false, nil
+			}
 
-		// Process any weird errors.
-		if errFrom != nil {
-			return false, errFrom
-		}
+			// One of the files finished before the other.
+			if errors.Is(errTo, io.EOF) {
+				return false, nil
+			}
 
-		// Process any weird errors.
-		if errTo != nil {
-			return false, errTo
+			// Process any weird errors.
+			if errFrom != nil {
+				return false, fmt.Errorf(
+					"unexpected error reading from from file during validation: %w", errFrom)
+			}
+
+			// Process any weird errors.
+			if errTo != nil {
+				return false, fmt.Errorf(
+					"unexpected error reading from to during validation: %w", errTo)
+			}
 		}
 	}
 
@@ -67,58 +94,23 @@ func IsFileSame(thingOne string, thingTwo string, transBuff int) (bool, error) {
 }
 
 // NibbleCopy - Copy one file to another a nibble at a time.
-func NibbleCopy(thingOne string, thingTwo string, transBuff int) (bool, error) {
+func (c *CardFileUtil) CopyCardFile(fromFile string, toFile string) (bool, error) {
 
-	from, err := os.Open(thingOne)
+	from, err := os.Open(fromFile)
 	if err != nil {
-		return false, errors.New("Error opening: " + thingOne)
+		return false, errors.New("Error opening: " + fromFile)
 	}
 	defer from.Close()
 
-	to, err := os.OpenFile(thingTwo, os.O_RDWR|os.O_CREATE, 0755)
+	to, err := os.OpenFile(toFile, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
-		return false, errors.New("Error opening: " + thingTwo)
+		return false, errors.New("Error opening: " + toFile)
 	}
 	defer to.Close()
 
-	nibble := make([]byte, transBuff)
-
-	for {
-
-		// I think I need to be checking for io.EOF in errFrom below.
-		byteRead, errFrom := from.Read(nibble)
-		if (byteRead == 0) && (errFrom == io.EOF) {
-			// We appear to be done.
-			return true, nil
-		}
-		if errFrom != nil {
-			// Some other error must have happened.
-			return false, errFrom
-		}
-
-		// Write the last block of bytes one at a time.
-		if byteRead < transBuff {
-			tag := make([]byte, byteRead)
-
-			for i := 0; i < byteRead; i++ {
-				tag[i] = nibble[i]
-			}
-
-			_, errTag := to.Write(tag)
-			if errTag != nil {
-				return false, errTag
-			}
-			break
-		}
-
-		_, errTo := to.Write(nibble)
-		if errTo != nil {
-			return false, errTo
-		}
-
-		if (errFrom == io.EOF) || (byteRead < transBuff) {
-			break
-		}
+	_, err = io.Copy(to, from)
+	if err != nil {
+		return false, fmt.Errorf("error copying card file: %w", err)
 	}
 
 	return true, nil
