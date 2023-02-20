@@ -156,10 +156,9 @@ func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) e
 // instead of sync.RWMutex.
 type TargetNameGenManager struct {
 	sync.Mutex
-	knowntargets  map[string]bool
-	targetDir     string
-	verifications uint64
-	cfu           CardFileUtilProvider
+	knowntargets map[string]bool
+	targetDir    string
+	cfu          CardFileUtilProvider
 }
 
 // NewTargetNameGenManager - Constructor for TargetNameGenManager
@@ -205,18 +204,25 @@ func NewTargetNameGenManager(targetDir string,
 	return rv, nil
 }
 
-func (t *TargetNameGenManager) getTargetName(fullName string) (string, bool, error) {
+func (t *TargetNameGenManager) getTargetName(fullName string, prevTryName string) (string, bool, error) {
 
 	// Lock, to protoect t.knowntargets
 	t.Lock()
 	defer t.Unlock()
 
-	_, fileName := path.Split(fullName)
-	tryName := path.Join(t.targetDir, fileName)
+	// Skip the target filename creation log, if we have a known previous name attempt.
+	var tryName string
+	var fileName string
+	if prevTryName != "" {
+		_, fileName = path.Split(fullName)
+		tryName = path.Join(t.targetDir, fileName)
 
-	if !t.knowntargets[tryName] {
-		t.knowntargets[tryName] = true
-		return tryName, false, nil
+		if !t.knowntargets[tryName] {
+			t.knowntargets[tryName] = true
+			return tryName, false, nil
+		}
+	} else {
+		tryName = prevTryName
 	}
 
 	// If we got this far, we have a naming conflict.  Start
@@ -262,7 +268,7 @@ func (t *TargetNameGenManager) getTargetName(fullName string) (string, bool, err
 			"unexpected number of periods in fileName: " + fileName)
 	}
 
-	finalTryName := path.Join(t.targetDir,CardFileCopy tryFileName)
+	finalTryName := path.Join(t.targetDir, tryFileName)
 
 	if !t.knowntargets[finalTryName] {
 		t.knowntargets[finalTryName] = true
@@ -342,7 +348,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 
 					sourceFile := wMsg.parentDir + "/" + wMsg.fileName
 
-					targetName, same, err := nameMan.getTargetName(sourceFile)
+					targetName, same, err := nameMan.getTargetName(sourceFile, wMsg.targetName)
 					if err != nil {
 						// We failed to get a target name, so don't retry.
 						wMsg.majorErr = fmt.Errorf("error getting target name for %s: %w", sourceFile, err)
@@ -394,7 +400,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 							// Send the work request back for another try.
 							wMsg.retriesUsed++
 							inWork <- wMsg
-							fmt.Printf("Retrying: %s\n", sourceFile)
+							fmt.Printf("Requeuing: %s\n", sourceFile)
 						} else {
 							wMsg.majorErr = fmt.Errorf("%s is out of retries", sourceFile)
 							outWork <- wMsg

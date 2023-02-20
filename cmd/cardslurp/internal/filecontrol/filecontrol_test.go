@@ -1,14 +1,15 @@
 package filecontrol
 
 import (
+	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
-)
+	"time"
 
-// The tests are going to take some thought.  I can probably test recurseDirTest
-// by itself, but LocateFilesTest and TargetNameGenTest depend on each other too
-// much to test them in isolation.
+	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
+)
 
 func TestRecurseDir(t *testing.T) {
 
@@ -17,12 +18,47 @@ func TestRecurseDir(t *testing.T) {
 	homedir := os.Getenv("HOME")
 
 	foundFiles := make([]CardSlurpWork, 0)
-	fullPath := homedir + "/go/src/cardSlurp/cmd/cardslurp/internal/filecontrol/testData/source"
+	fullPath := homedir + "/go/src/github.com/cardSlurp/cmd/cardslurp/internal/filecontrol/testData/source"
 	debugMode := false
 	err := recurseDir(fullPath, &foundFiles, &debugMode)
 	if err != nil {
 		t.Fatal("recurseDir() returned an error")
 	}
+}
+
+var (
+	errInjected = errors.New("injected error")
+)
+
+type CardFileUtilMock struct {
+	cfu          cardfileutil.CardFileUtil
+	perturbation rand.Rand
+}
+
+func NewCardFileUtilMock() *CardFileUtilMock {
+	source := rand.NewSource(time.Now().UnixMicro())
+	return &CardFileUtilMock{
+		cfu:          *cardfileutil.NewCardFileUtil(16384, 3),
+		perturbation: *rand.New(source),
+	}
+}
+
+func (c *CardFileUtilMock) IsFileSame(fromFile string, toFile string) (bool, error) {
+	// 10% of the time, throw and error instead of calling the corresponding cfu method.
+	dice := c.perturbation.Int63n(10)
+	if dice == 9 {
+		return false, errInjected
+	}
+	return c.cfu.IsFileSame(fromFile, toFile)
+}
+
+func (c *CardFileUtilMock) CardFileCopy(fromFile string, toFile string) (bool, error) {
+	// 10% of the time, throw and error instead of calling the corresponding cfu method.
+	dice := c.perturbation.Int63n(10)
+	if dice == 9 {
+		return false, errInjected
+	}
+	return c.cfu.CardFileCopy(fromFile, toFile)
 }
 
 // This test mimics the behavior of the main application.
@@ -48,21 +84,23 @@ func TestNewWorkerPool(t *testing.T) {
 		t.Fatal("error making targetdir: " + err.Error())
 	}
 
-	nameOracle, err := NewTargetNameGenManager(targetDir, 2)
+	cfum := NewCardFileUtilMock()
+
+	nameOracle, err := NewTargetNameGenManager(targetDir, cfum)
 	if err != nil {
 		t.Fatal("error making name oracle: " + err.Error())
 	}
 
-	workerPool := NewWorkerPool(15, nameOracle, 2, true, 5)
+	workerPool := NewWorkerPool(4, nameOracle, false, cfum, 5)
 
 	err = OrchestrateLocate([]string{cardA, cardB, cardC, cardD},
 		workerPool, true)
-	if err != nil {
+	if err != nil && !errors.Is(err, errInjected) {
 		t.Fatal("unexpected from OrchestrateLocate: " + err.Error())
 	}
 
 	finalResults, err := workerPool.ParallelFileCopy()
-	if err != nil {
+	if err != nil && !errors.Is(err, errInjected) {
 		t.Fatal("unexpected error from parallel file copy: " + err.Error())
 	}
 

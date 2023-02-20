@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
 )
 
@@ -18,16 +19,17 @@ func main() {
 		panic("error processing command line arguments: " + err.Error())
 	}
 
+	cfu := cardfileutil.NewCardFileUtil(opts.VerifyChunkSize, opts.VerifyPasses)
+
 	nameOracle, err := filecontrol.NewTargetNameGenManager(
-		opts.TargetDir, opts.VerifyPasses)
+		opts.TargetDir, cfu)
 	if err != nil {
 		// No point in continuing
 		panic("error making target name oracle: " + err.Error())
 	}
 
-	workerPool := filecontrol.NewWorkerPool(opts.WorkerPool,
-		nameOracle, opts.VerifyPasses, opts.DebugMode,
-		opts.MaxRetries)
+	workerPool := filecontrol.NewWorkerPool(opts.WorkerPool, nameOracle,
+		opts.DebugMode, cfu, opts.MaxRetries)
 
 	err = filecontrol.OrchestrateLocate(opts.MountList, workerPool, opts.DebugMode)
 	if err != nil {
