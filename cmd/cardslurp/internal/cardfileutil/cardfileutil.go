@@ -23,7 +23,9 @@ func NewCardFileUtil(transBufferSize uint64, verificationPasses uint64) *CardFil
 // IsFileSame - Do a byte by byte comparison of the two files.
 func (c *CardFileUtil) IsFileSame(fromFile string, toFile string) (bool, error) {
 
-	// While it is tempting to
+	// While it is tempting to just read the whole file into ram with
+	// os.ReadFile(), this approach will fail with video files.  They
+	// can be huge.
 
 	from, err := os.Open(fromFile)
 	if err != nil {

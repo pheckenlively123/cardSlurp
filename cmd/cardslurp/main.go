@@ -56,12 +56,13 @@ func main() {
 
 // CmdOpts - All of the options provided from the command line.
 type CmdOpts struct {
-	TargetDir    string
-	MountList    []string
-	DebugMode    bool
-	WorkerPool   uint64
-	MaxRetries   uint64
-	VerifyPasses uint64
+	TargetDir       string
+	MountList       []string
+	DebugMode       bool
+	WorkerPool      uint64
+	MaxRetries      uint64
+	VerifyPasses    uint64
+	VerifyChunkSize uint64
 }
 
 // GetOpts - Return the command line arguments in a CmdOpts struct
@@ -71,26 +72,44 @@ func GetOpts() (CmdOpts, error) {
 	mountListStr := flag.String("mountlist", "", "Comma delimited list of mounted cards.")
 	debugMode := flag.Bool("debugMode", false, "Print extra debug information.")
 	maxRetries := flag.Uint64("maxretries", 5, "Max number of retry attempts.")
-	verifyPasses := flag.Uint64("verifypasses", 2, "Number of file verify test passes")
-	workerPoolSize := flag.Uint64("workerpool", 15, "Size of the worker pool")
+	verifyPasses := flag.Uint64("verifypasses", 3, "Number of file verify test passes")
+	verifyChunkSize := flag.Uint64("verifychunksize", 16384, "Size of the verify chunks")
+	workerPoolSize := flag.Uint64("workerpool", 4, "Size of the worker pool")
 
 	flag.Parse()
 
 	if *targetDir == "" {
 		return CmdOpts{}, errors.New("-targetdir is a required parameter")
 	}
+
 	if *mountListStr == "" {
 		return CmdOpts{}, errors.New("-mountlist is a required parameter")
 	}
 
+	if *maxRetries == 0 {
+		return CmdOpts{}, errors.New("-maxretries must not be zero")
+	}
+
+	if *verifyPasses == 0 {
+		return CmdOpts{}, errors.New("-verifypasses must not be zero")
+	}
+
+	if *verifyChunkSize == 0 {
+		return CmdOpts{}, errors.New("-verifychunksize must not be zero")
+	}
+
 	ml := strings.Split(*mountListStr, ",")
+	if len(ml) == 0 {
+		return CmdOpts{}, errors.New("length of -mountlist must not be zero")
+	}
 
 	return CmdOpts{
-		TargetDir:    *targetDir,
-		MountList:    ml,
-		DebugMode:    *debugMode,
-		MaxRetries:   *maxRetries,
-		VerifyPasses: *verifyPasses,
-		WorkerPool:   *workerPoolSize,
+		TargetDir:       *targetDir,
+		MountList:       ml,
+		DebugMode:       *debugMode,
+		MaxRetries:      *maxRetries,
+		VerifyPasses:    *verifyPasses,
+		VerifyChunkSize: *verifyChunkSize,
+		WorkerPool:      *workerPoolSize,
 	}, nil
 }
