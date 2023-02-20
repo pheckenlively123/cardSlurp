@@ -358,7 +358,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 						fmt.Printf("Using %s for write name.\n", targetName)
 					}
 
-					_, err = cardfileutil.FileCopy(sourceFile, targetName)
+					_, err = cardfileutil.CardFileCopy(sourceFile, targetName)
 					if err != nil {
 						// Handle an error copying the file as a major error.
 						wMsg.majorErr = fmt.Errorf(

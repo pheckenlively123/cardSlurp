@@ -37,8 +37,8 @@ func IsFileSame(fromFile string, toFile string,
 	return true, nil
 }
 
-// FileCopy - Copy one file to another.
-func FileCopy(fromFile string, toFile string) (bool, error) {
+// CardFileCopy - Copy one file to another.
+func CardFileCopy(fromFile string, toFile string) (bool, error) {
 
 	from, err := os.Open(fromFile)
 	if err != nil {

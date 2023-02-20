@@ -33,7 +33,7 @@ func TestFileCopy(t *testing.T) {
 
 	for iterations := 1; iterations <= 5; iterations++ {
 
-		copyStatus, err := FileCopy("testData/same_a.txt", "testData/victim.txt")
+		copyStatus, err := CardFileCopy("testData/same_a.txt", "testData/victim.txt")
 		if err != nil {
 			t.Fatal("Error calling FileCopy: " + err.Error())
 		}
