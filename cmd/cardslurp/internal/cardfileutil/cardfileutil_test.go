@@ -1,54 +1,63 @@
 package cardfileutil
 
 import (
+	"fmt"
 	"testing"
 )
 
 func TestIsFileSame(t *testing.T) {
 
-	// Torture test for boundary conditions.  :-)
-	for iterations := 1; iterations <= 5; iterations++ {
+	maxTransBuff := 8192
 
-		sameStat, err := IsFileSame("testData/same_a.txt", "testData/same_b.txt", uint64(iterations))
+	// Torture test for boundary conditions.  :-)
+	for transBuff := 1; transBuff <= maxTransBuff; transBuff++ {
+
+		cfu := NewCardFileUtil(uint64(transBuff), 3)
+		sameStat, err := cfu.IsFileSame("testData/same_a.txt", "testData/same_b.txt")
 		if err != nil {
-			t.Fatal("Error calling IsFileSame: " + err.Error())
+			fmt.Print("Error calling IsFileSame: " + err.Error() + "\n")
+			t.Fail()
 		}
 
 		if !sameStat {
-			t.Fatal("Files were the same, but they tested as different.\n")
+			t.Error("Files were the same, but they tested as different.\n")
 		}
 
-		diffStat, err := IsFileSame("testData/same_a.txt", "testData/diff_b.txt", uint64(iterations))
+		diffStat, err := cfu.IsFileSame("testData/same_a.txt", "testData/diff_b.txt")
 		if err != nil {
-			t.Fatal("Error calling IsFileSame: " + err.Error())
+			fmt.Print("Error calling IsFileSame: " + err.Error() + "\n")
 		}
 
 		if diffStat {
-			t.Fatal("Files were different, but they tested as the same.\n")
+			t.Error("Files were different, but they tested as the same.\n")
 		}
 	}
 }
 
-func TestFileCopy(t *testing.T) {
+func TestCopyCardFile(t *testing.T) {
 
-	for iterations := 1; iterations <= 5; iterations++ {
+	maxTransBuff := 8192
 
-		copyStatus, err := CardFileCopy("testData/same_a.txt", "testData/victim.txt")
+	for transBuff := 1; transBuff <= maxTransBuff; transBuff++ {
+
+		cfu := NewCardFileUtil(uint64(transBuff), 3)
+
+		nibStat, err := cfu.CardFileCopy("testData/same_a.txt", "testData/victim.txt")
 		if err != nil {
-			t.Fatal("Error calling FileCopy: " + err.Error())
+			t.Fatal("Error calling NibbleCopy: " + err.Error())
 		}
 
-		if !copyStatus {
-			t.Fatal("Nibble copy returned false")
+		if !nibStat {
+			t.Fatalf("CopyCardFile returned false: transBuff == %d\n", transBuff)
 		}
 
-		sameStat, err := IsFileSame("testData/same_a.txt", "testData/victim.txt", uint64(iterations))
+		sameStat, err := cfu.IsFileSame("testData/same_a.txt", "testData/victim.txt")
 		if err != nil {
 			t.Fatal("Error calling IsFileSame: " + err.Error())
 		}
 
 		if !sameStat {
-			t.Fatal("IsFileSame said that file copied by NibbleCopy differed.")
+			t.Error("IsFileSame said that file copied by NibbleCopy differed.\n")
 		}
 	}
 }
