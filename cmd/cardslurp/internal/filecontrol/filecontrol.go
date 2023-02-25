@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
 
 // WorkerPoolFinishMsg - passed back to main from the per card worker threads.
@@ -34,12 +33,18 @@ type LocateFilesFinishMsg struct {
 type CardSlurpWork struct {
 	parentDir   string
 	fileName    string
+	targetName  string
 	fileTime    time.Time
 	skipped     bool
 	copied      bool
 	retriesUsed uint64
 	minorErr    []string
 	majorErr    error
+}
+
+type CardFileUtilProvider interface {
+	IsFileSame(fromFile string, toFile string) (bool, error)
+	CardFileCopy(fromFile string, toFile string) (bool, error)
 }
 
 func OrchestrateLocate(cardPathList []string, workerPool *WorkerPool,
@@ -151,14 +156,14 @@ func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) e
 // instead of sync.RWMutex.
 type TargetNameGenManager struct {
 	sync.Mutex
-	knowntargets  map[string]bool
-	targetDir     string
-	verifications uint64
+	knowntargets map[string]bool
+	targetDir    string
+	cfu          CardFileUtilProvider
 }
 
 // NewTargetNameGenManager - Constructor for TargetNameGenManager
 func NewTargetNameGenManager(targetDir string,
-	verifications uint64) (*TargetNameGenManager, error) {
+	cfu CardFileUtilProvider) (*TargetNameGenManager, error) {
 
 	stat, err := os.Stat(targetDir)
 	if err != nil {
@@ -171,10 +176,10 @@ func NewTargetNameGenManager(targetDir string,
 	}
 
 	rv := &TargetNameGenManager{
-		Mutex:         sync.Mutex{},
-		knowntargets:  make(map[string]bool),
-		targetDir:     targetDir,
-		verifications: verifications,
+		Mutex:        sync.Mutex{},
+		knowntargets: make(map[string]bool),
+		targetDir:    targetDir,
+		cfu:          cfu,
 	}
 
 	files, err := os.ReadDir(targetDir)
@@ -199,18 +204,25 @@ func NewTargetNameGenManager(targetDir string,
 	return rv, nil
 }
 
-func (t *TargetNameGenManager) getTargetName(fullName string) (string, bool, error) {
+func (t *TargetNameGenManager) getTargetName(fullName string, prevTryName string) (string, bool, error) {
 
 	// Lock, to protoect t.knowntargets
 	t.Lock()
 	defer t.Unlock()
 
-	_, fileName := path.Split(fullName)
-	tryName := path.Join(t.targetDir, fileName)
+	// Skip the target filename creation log, if we have a known previous name attempt.
+	var tryName string
+	var fileName string
+	if prevTryName != "" {
+		_, fileName = path.Split(fullName)
+		tryName = path.Join(t.targetDir, fileName)
 
-	if !t.knowntargets[tryName] {
-		t.knowntargets[tryName] = true
-		return tryName, false, nil
+		if !t.knowntargets[tryName] {
+			t.knowntargets[tryName] = true
+			return tryName, false, nil
+		}
+	} else {
+		tryName = prevTryName
 	}
 
 	// If we got this far, we have a naming conflict.  Start
@@ -223,7 +235,7 @@ func (t *TargetNameGenManager) getTargetName(fullName string) (string, bool, err
 	_, err := os.Stat(tryName)
 	if err == nil {
 		// We should be safe to compare the files now.
-		same, err := cardfileutil.IsFileSame(fullName, tryName, t.verifications)
+		same, err := t.cfu.IsFileSame(fullName, tryName)
 		if err != nil {
 			return "", false, fmt.Errorf("error calling IsFileSame: %w", err)
 		}
@@ -270,25 +282,25 @@ func (t *TargetNameGenManager) getTargetName(fullName string) (string, bool, err
 
 type WorkerPool struct {
 	// wg         *sync.WaitGroup
-	poolSize      uint64
-	queuedWork    []CardSlurpWork
-	nameOracle    *TargetNameGenManager
-	debug         bool
-	verifications uint64
-	maxRetries    uint64
+	poolSize   uint64
+	queuedWork []CardSlurpWork
+	nameOracle *TargetNameGenManager
+	debug      bool
+	maxRetries uint64
+	cfu        CardFileUtilProvider
 }
 
 func NewWorkerPool(poolSize uint64, nameManager *TargetNameGenManager,
-	verifications uint64, debugMode bool,
+	debugMode bool, cfu CardFileUtilProvider,
 	maxRetries uint64) *WorkerPool {
 
 	rv := &WorkerPool{
-		poolSize:      poolSize,
-		queuedWork:    make([]CardSlurpWork, 0),
-		nameOracle:    nameManager,
-		debug:         debugMode,
-		verifications: verifications,
-		maxRetries:    maxRetries,
+		poolSize:   poolSize,
+		queuedWork: make([]CardSlurpWork, 0),
+		nameOracle: nameManager,
+		debug:      debugMode,
+		maxRetries: maxRetries,
+		cfu:        cfu,
 	}
 
 	return rv
@@ -323,8 +335,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 		wg.Add(1)
 		go func(wkCtx context.Context, wg *sync.WaitGroup,
 			nameMan *TargetNameGenManager, inWork chan CardSlurpWork,
-			outWork chan<- CardSlurpWork, verify uint64,
-			debug bool, maxRetries uint64) {
+			outWork chan<- CardSlurpWork, debug bool, maxRetries uint64) {
 
 			wg.Done()
 
@@ -337,7 +348,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 
 					sourceFile := wMsg.parentDir + "/" + wMsg.fileName
 
-					targetName, same, err := nameMan.getTargetName(sourceFile)
+					targetName, same, err := nameMan.getTargetName(sourceFile, wMsg.targetName)
 					if err != nil {
 						// We failed to get a target name, so don't retry.
 						wMsg.majorErr = fmt.Errorf("error getting target name for %s: %w", sourceFile, err)
@@ -358,7 +369,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 						fmt.Printf("Using %s for write name.\n", targetName)
 					}
 
-					_, err = cardfileutil.FileCopy(sourceFile, targetName)
+					_, err = w.cfu.CardFileCopy(sourceFile, targetName)
 					if err != nil {
 						// Handle an error copying the file as a major error.
 						wMsg.majorErr = fmt.Errorf(
@@ -367,7 +378,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 						continue Loop
 					}
 
-					sameStat, err := cardfileutil.IsFileSame(sourceFile, targetName, verify)
+					sameStat, err := w.cfu.IsFileSame(sourceFile, targetName)
 					if err != nil {
 						// Handle an error calling IsFileSame as a major error.
 						wMsg.majorErr = fmt.Errorf(
@@ -388,8 +399,9 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 						if wMsg.retriesUsed < maxRetries {
 							// Send the work request back for another try.
 							wMsg.retriesUsed++
+							wMsg.targetName = targetName
 							inWork <- wMsg
-							fmt.Printf("Retrying: %s\n", sourceFile)
+							fmt.Printf("Requeuing: %s\n", sourceFile)
 						} else {
 							wMsg.majorErr = fmt.Errorf("%s is out of retries", sourceFile)
 							outWork <- wMsg
@@ -398,8 +410,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 				}
 			}
 
-		}(ctx, wg, w.nameOracle, inputWork, outputWork,
-			w.verifications, w.debug, w.maxRetries)
+		}(ctx, wg, w.nameOracle, inputWork, outputWork, w.debug, w.maxRetries)
 	}
 
 	// Now that the worker pool is running, feed all the work

@@ -4,19 +4,10 @@
 			"path": "."
 		},
 		{
-			"path": "../../internal/cardfileutil"
+			"path": "./internal/cardfileutil"
 		},
 		{
-			"path": "../../internal/commandline"
-		},
-		{
-			"path": "../../internal/filecontrol"
-		},
-		{
-			"path": "../../internal"
-		},
-		{
-			"path": "../.."
+			"path": "./internal/filecontrol"
 		}
 	],
 	"settings": {}
