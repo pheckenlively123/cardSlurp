@@ -399,6 +399,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 						if wMsg.retriesUsed < maxRetries {
 							// Send the work request back for another try.
 							wMsg.retriesUsed++
+							wMsg.targetName = targetName
 							inWork <- wMsg
 							fmt.Printf("Requeuing: %s\n", sourceFile)
 						} else {

@@ -44,12 +44,18 @@ func NewCardFileUtilMock() *CardFileUtilMock {
 }
 
 func (c *CardFileUtilMock) IsFileSame(fromFile string, toFile string) (bool, error) {
-	// 10% of the time, throw and error instead of calling the corresponding cfu method.
+	// 10% of the time, throw and a simulated major error.  10% of the time have
+	// verification fail, but no error.  The rest of the time, return the results
+	// of the actual verify method.
 	dice := c.perturbation.Int63n(10)
-	if dice == 9 {
+	switch dice {
+	case 8:
+		return false, nil
+	case 9:
 		return false, errInjected
+	default:
+		return c.cfu.IsFileSame(fromFile, toFile)
 	}
-	return c.cfu.IsFileSame(fromFile, toFile)
 }
 
 func (c *CardFileUtilMock) CardFileCopy(fromFile string, toFile string) (bool, error) {
