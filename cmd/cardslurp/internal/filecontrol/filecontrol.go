@@ -213,7 +213,7 @@ func (t *TargetNameGenManager) getTargetName(fullName string, prevTryName string
 	// Skip the target filename creation log, if we have a known previous name attempt.
 	var tryName string
 	var fileName string
-	if prevTryName != "" {
+	if prevTryName == "" {
 		_, fileName = path.Split(fullName)
 		tryName = path.Join(t.targetDir, fileName)
 
