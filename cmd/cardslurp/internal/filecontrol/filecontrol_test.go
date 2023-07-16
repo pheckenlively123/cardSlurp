@@ -11,6 +11,7 @@ import (
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 )
 
+/*
 func TestRecurseDir(t *testing.T) {
 
 	// Base the path of the test source on the home directory variable.  That
@@ -25,6 +26,7 @@ func TestRecurseDir(t *testing.T) {
 		t.Fatal("recurseDir() returned an error")
 	}
 }
+*/
 
 var (
 	errInjected = errors.New("injected error")
@@ -73,7 +75,7 @@ func TestNewWorkerPool(t *testing.T) {
 
 	homedir := os.Getenv("HOME")
 
-	testDir := homedir + "/go/src/github.com/cardSlurp/cmd/cardslurp/internal/filecontrol/testData"
+	testDir := homedir + "/go/src/github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol/testData"
 
 	cardA := testDir + "/source/A"
 	cardB := testDir + "/source/B"

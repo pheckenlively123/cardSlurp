@@ -1,13 +1,13 @@
-mac_arm: clean lint scan test
+mac_arm64: clean lint scan test
 	GOOS=darwin GOARCH=arm64 go build
 
-mac_intel: clean lint scan test
+mac_amd64: clean lint scan test
 	GOOS=darwin GOARCH=amd64 go build
 
-win_intel: clean lint scan test
+win_amd64: clean lint scan test
 	GOOS=windows GOARCH=amd64 go build
 
-linux_intel: clean lint scan test
+linux_amd64: clean lint scan test
 	GOOS=linux GOARCH=amd64 go build
 
 test:
