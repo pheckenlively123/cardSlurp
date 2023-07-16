@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -91,7 +93,39 @@ func locateFiles(fullPath string, wg *sync.WaitGroup,
 
 	foundFiles := make([]CardSlurpWork, 0)
 
-	err := recurseDir(fullPath, &foundFiles, &debugMode)
+	var wdf fs.WalkDirFunc = func(path string, d fs.DirEntry, err error) error {
+
+		if err != nil {
+			return fmt.Errorf("wdf received an error in input: %w", err)
+		}
+
+		if !d.IsDir() {
+
+			fileInfo, err := d.Info()
+			if err != nil {
+				return fmt.Errorf("errro getting info for %s: %w", d.Name(), err)
+			}
+
+			parentPath, fileName := filepath.Split(path)
+
+			if fileName != d.Name() {
+				return fmt.Errorf(
+					"filename from filepath.Split and DirEntry do not match %s != %s",
+					fileName, d.Name())
+			}
+			foundRec := CardSlurpWork{
+				parentDir: parentPath,
+				fileName:  fileName,
+				fileTime:  fileInfo.ModTime(),
+			}
+
+			foundFiles = append(foundFiles, foundRec)
+		}
+
+		return nil
+	}
+
+	err := filepath.WalkDir(fullPath, wdf)
 	if err != nil {
 		// Punch out early
 		rv.LocateError = fmt.Errorf("error recursing path %s: %w", fullPath, err)
@@ -105,50 +139,6 @@ func locateFiles(fullPath string, wg *sync.WaitGroup,
 	}
 
 	locateFinishCh <- rv
-}
-
-func recurseDir(fullPath string, foundFiles *[]CardSlurpWork, debugMode *bool) error {
-
-	fmt.Printf("Recursing: %s\n", fullPath)
-
-	dirList, err := os.ReadDir(fullPath)
-	if err != nil {
-		return err
-	}
-
-	for _, dirEntry := range dirList {
-
-		switch {
-		case dirEntry.IsDir():
-			newPath := fullPath + "/" + dirEntry.Name()
-			err := recurseDir(newPath, foundFiles, debugMode)
-			if err != nil {
-				return fmt.Errorf("error calling recurseDir: %w", err)
-			}
-		default:
-			// Just grab everything that is not a directory.  If they gave us a
-			// card with special files, we will just get errors trying to copy.
-			fileInfo, err := dirEntry.Info()
-			if err != nil {
-				return fmt.Errorf(
-					"error calling Info() for %s: %w", dirEntry.Name(), err)
-			}
-			foundRec := CardSlurpWork{
-				parentDir: fullPath,
-				fileName:  dirEntry.Name(),
-				fileTime:  fileInfo.ModTime(),
-			}
-
-			*foundFiles = append(*foundFiles, foundRec)
-
-			if *debugMode {
-				fmt.Printf("Found: %s/%s\n", fullPath,
-					dirEntry.Name())
-			}
-		}
-	}
-
-	return nil
 }
 
 // TargetNameGenManager - Manage naming of the target filename.  All Calls for
