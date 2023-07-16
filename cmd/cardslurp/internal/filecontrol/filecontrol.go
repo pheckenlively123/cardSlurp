@@ -107,6 +107,7 @@ func locateFiles(fullPath string, wg *sync.WaitGroup,
 			}
 
 			parentPath, fileName := filepath.Split(path)
+			parentPath = strings.TrimSuffix(parentPath, "/")
 
 			if fileName != d.Name() {
 				return fmt.Errorf(
