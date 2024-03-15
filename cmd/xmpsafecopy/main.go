@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -42,6 +43,10 @@ func safeCopy(opts *opts, sourceFull string) error {
 
 	_, sourceFile := path.Split(sourceFull)
 	targetName := fmt.Sprintf("%s/%s", opts.target, sourceFile)
+
+	if sourceFull == targetName {
+		return errors.New("source and target are the same")
+	}
 
 	if opts.memorex {
 		fmt.Printf("Simulating copying: %s to %s\n", sourceFull, targetName)
@@ -99,10 +104,13 @@ func getopt() (*opts, error) {
 	flag.Parse()
 
 	if *source == "" {
-		return &opts{}, fmt.Errorf("-source is a required parameter")
+		return &opts{}, errors.New("-source is a required parameter")
 	}
 	if *target == "" {
-		return &opts{}, fmt.Errorf("-target is a required parameter")
+		return &opts{}, errors.New("-target is a required parameter")
+	}
+	if *source == *target {
+		return &opts{}, errors.New("-source and -target must not be the same")
 	}
 
 	return &opts{
