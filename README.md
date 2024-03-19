@@ -20,7 +20,7 @@ conflict.  Most cameras support this feature, and Canon EOS cameras definitely
 do.  For example, one of my cameras generates files named `PAH_####.CR2` and the
 other generates files named `PBH_####.CR2`.
 
-`cardslurp` uses the `flags` package, so it understands the `-h` option.
+`cardslurp` uses the `flag` package, so it understands the `-h` option.
 
 ```
 patrickheckenlively@Patricks-Mac-Studio:~$ ~/myBin/cardslurp -h
@@ -69,36 +69,72 @@ Mac, and Windows.
 ```
 cd cmd/cardslurp
 make TARGET
-make install
 ```
 
 In the commands above, replace TARGET with one of the options below, based on
 the architecture of the computer where you wish to run cardslurp.
 
-```
-mac_arm64
-mac_amd64
-linux_amd64
-win_amd64
-```
+* mac_arm64
+* mac_amd64
+* linux_amd64
+* win_amd64
 
-By default, Windows does not have `make`, so you might have to make the
-`win_amd64` target on Linux or Mac.
+Copy the resulting binary to the desired location, once it is built.
 
 ## xmpsafecopy
 
 This utility is probably only of interest, if your photo workflow
-is similar to the author's.  I like to keep my images on an Samba
-based file share.  However, to speed up the culling process, I
-sometimes copy the image directory to local disk on my MacStudio.
-I have PhotoMechanic and Lightroom configured to write metadata to
-`.xmp` files.  This allows me to use PhotoMechanic to cull the
+is similar to mine.  I like to keep my images on an Samba based
+file share.  However, to speed up the culling process, I sometimes
+copy the image directory to local disk on my MacStudio.  I have
+PhotoMechanic and Lightroom configured to write metadata to `.xmp`
+side cart files.  This allows me to use PhotoMechanic to cull the
 photoshoot directory.  I then copy the `.xmp` files back to the
-same directory on the Samba file share.  Lightroom only knows about
-the directory on the Samba file share.
+corresponding directory on the Samba file share.  (Lightroom only
+knows about the directory on the Samba file share.)  Then I tell
+Lightroom to import metadata from the images.
 
 I wrote this utility, so I could programatically ensure that we are
 only moving `.xmp` files associated with the same photo shoot.
+
+`xmpsafecopy` uses the `flag` package, so it understands the `-h` command line option.
+
+```
+~/myBin/xmpsafecopy -h
+Usage of /Users/patrickheckenlively/myBin/xmpsafecopy:
+  -extension string
+    	File extension (default "xmp")
+  -memorex
+    	Is it live, or is it memorex (default true)
+  -source string
+    	Source directory
+  -target string
+    	Target directory
+```
+
+### Example Usage
+
+```
+~/myBin/xmpsafecopy -source="/somesource" -target="/sometarget" -memorex=false
+```
+
+### Installation
+
+Run the commands below on machine with the Go SDK and Make installed.
+
+```
+cd cmd/xmpsafecopy
+make TARGET
+```
+
+Acceptable values for TARGET are:
+
+* mac_arm64
+* mac_amd64
+* win_amd64
+* linux_amd64
+
+Copy the resulting binary to the desired location, once it is built.
 
 # The Author
 
