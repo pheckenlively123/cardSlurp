@@ -60,11 +60,11 @@ func (c *CardFileUtilMock) IsFileSame(fromFile string, toFile string) (bool, err
 	}
 }
 
-func (c *CardFileUtilMock) CardFileCopy(fromFile string, toFile string) (bool, error) {
+func (c *CardFileUtilMock) CardFileCopy(fromFile string, toFile string) error {
 	// 10% of the time, throw and error instead of calling the corresponding cfu method.
 	dice := c.perturbation.Int63n(10)
 	if dice == 9 {
-		return false, errInjected
+		return errInjected
 	}
 	return c.cfu.CardFileCopy(fromFile, toFile)
 }

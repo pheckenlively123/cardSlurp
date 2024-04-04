@@ -5,9 +5,6 @@
 		},
 		{
 			"path": "../../internal/cardfileutil"
-		},
-		{
-			"path": "./internal/filecontrol"
 		}
 	],
 	"settings": {}
