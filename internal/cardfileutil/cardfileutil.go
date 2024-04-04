@@ -93,24 +93,24 @@ func (c *CardFileUtil) IsFileSame(fromFile string, toFile string) (bool, error) 
 }
 
 // CardFileCopy - Copy one file to another.
-func (c *CardFileUtil) CardFileCopy(fromFile string, toFile string) (bool, error) {
+func (c *CardFileUtil) CardFileCopy(fromFile string, toFile string) error {
 
 	from, err := os.Open(fromFile)
 	if err != nil {
-		return false, fmt.Errorf("error opening from file: %w", err)
+		return fmt.Errorf("error opening from file: %w", err)
 	}
 	defer from.Close()
 
 	to, err := os.OpenFile(toFile, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
-		return false, fmt.Errorf("error opening to file: %w", err)
+		return fmt.Errorf("error opening to file: %w", err)
 	}
 	defer to.Close()
 
 	_, err = io.Copy(to, from)
 	if err != nil {
-		return false, fmt.Errorf("error copying from to to: %w", err)
+		return fmt.Errorf("error copying from to to: %w", err)
 	}
 
-	return true, nil
+	return nil
 }

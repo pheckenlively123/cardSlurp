@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
+	"github.com/pheckenlively123/cardSlurp/internal/cardfileutil"
 )
 
 /*

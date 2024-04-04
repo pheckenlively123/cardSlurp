@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/cardfileutil"
 	"github.com/pheckenlively123/cardSlurp/cmd/cardslurp/internal/filecontrol"
+	"github.com/pheckenlively123/cardSlurp/internal/cardfileutil"
 )
 
 func main() {

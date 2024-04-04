@@ -99,6 +99,10 @@ func locateFiles(fullPath string, wg *sync.WaitGroup,
 			return fmt.Errorf("wdf received an error in input: %w", err)
 		}
 
+		if debugMode {
+			fmt.Printf("Examining path: %s\n", path)
+		}
+
 		if !d.IsDir() {
 
 			fileInfo, err := d.Info()

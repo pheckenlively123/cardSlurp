@@ -11,6 +11,7 @@ linux_amd64: clean lint scan test
 	GOOS=linux GOARCH=amd64 go build
 
 test:
+	cd ../../internal/cardfileutil && go test && cd ../../cmd/xmpsafecopy
 
 # See this page for install instructions for golanci-lint: https://golangci-lint.run/usage/install/
 lint:
