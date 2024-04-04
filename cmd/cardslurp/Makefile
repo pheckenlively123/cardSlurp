@@ -11,7 +11,7 @@ linux_amd64: clean lint scan test
 	GOOS=linux GOARCH=amd64 go build
 
 test:
-	cd internal/cardfileutil && go test && cd ../..
+	cd ../../internal/cardfileutil && go test && cd ../../cmd/cardslurp
 	cd internal/filecontrol && go test && cd ../..
 
 # See this page for install instructions for golanci-lint: https://golangci-lint.run/usage/install/

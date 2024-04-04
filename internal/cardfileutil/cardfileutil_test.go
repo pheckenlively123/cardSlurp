@@ -42,13 +42,9 @@ func TestCopyCardFile(t *testing.T) {
 
 		cfu := NewCardFileUtil(uint64(transBuff), 3)
 
-		nibStat, err := cfu.CardFileCopy("testData/same_a.txt", "testData/victim.txt")
+		err := cfu.CardFileCopy("testData/same_a.txt", "testData/victim.txt")
 		if err != nil {
-			t.Fatal("Error calling NibbleCopy: " + err.Error())
-		}
-
-		if !nibStat {
-			t.Fatalf("CopyCardFile returned false: transBuff == %d\n", transBuff)
+			t.Fatal("Error calling CardFileCopy: " + err.Error())
 		}
 
 		sameStat, err := cfu.IsFileSame("testData/same_a.txt", "testData/victim.txt")

@@ -46,7 +46,7 @@ type CardSlurpWork struct {
 
 type CardFileUtilProvider interface {
 	IsFileSame(fromFile string, toFile string) (bool, error)
-	CardFileCopy(fromFile string, toFile string) (bool, error)
+	CardFileCopy(fromFile string, toFile string) error
 }
 
 func OrchestrateLocate(cardPathList []string, workerPool *WorkerPool,
@@ -97,6 +97,10 @@ func locateFiles(fullPath string, wg *sync.WaitGroup,
 
 		if err != nil {
 			return fmt.Errorf("wdf received an error in input: %w", err)
+		}
+
+		if debugMode {
+			fmt.Printf("Examining path: %s\n", path)
 		}
 
 		if !d.IsDir() {
@@ -360,7 +364,7 @@ func (w *WorkerPool) ParallelFileCopy() (WorkerPoolFinishMsg, error) {
 						fmt.Printf("Using %s for write name.\n", targetName)
 					}
 
-					_, err = w.cfu.CardFileCopy(sourceFile, targetName)
+					err = w.cfu.CardFileCopy(sourceFile, targetName)
 					if err != nil {
 						// Handle an error copying the file as a major error.
 						wMsg.majorErr = fmt.Errorf(
