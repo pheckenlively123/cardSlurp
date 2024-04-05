@@ -84,23 +84,27 @@ Copy the resulting binary to the desired location, once it is built.
 ## xmpsafecopy
 
 This utility is probably only of interest, if your photo workflow
-is similar to mine.  I like to keep my images on an Samba based
-file share.  However, to speed up the culling process, I sometimes
-copy the image directory to local disk on my MacStudio.  I have
-PhotoMechanic and Lightroom configured to write metadata to `.xmp`
-side cart files.  This allows me to use PhotoMechanic to cull the
-photoshoot directory.  I then copy the `.xmp` files back to the
+is similar to the author's.  I like to keep my images on an Samba
+based file share.  However, to speed up the culling process, I copy
+the image directory to local disk on my MacStudio.  I have PhotoMechanic
+and Lightroom configured to write metadata to `.xmp` side cart
+files.  This allows me to use PhotoMechanic to cull the images in
+the photoshoot directory.  I then copy the `.xmp` files back to the
 corresponding directory on the Samba file share.  (Lightroom only
 knows about the directory on the Samba file share.)  Then I tell
 Lightroom to import metadata from the images.
 
 I wrote this utility, so I could programatically ensure that we are
 only moving `.xmp` files associated with the same photo shoot.
+`xmpsafecopy` backs up any `.xmp` files present in the target
+directory.  It copies all `.xmp` files from the source.  Finally,
+it verifies that each `.xmp` files is the same between the source
+and target.
 
 `xmpsafecopy` uses the `flag` package, so it understands the `-h` command line option.
 
 ```
-~/myBin/xmpsafecopy -h
+$ ~/myBin/xmpsafecopy -h
 Usage of /Users/patrickheckenlively/myBin/xmpsafecopy:
   -extension string
     	File extension (default "xmp")
@@ -110,6 +114,10 @@ Usage of /Users/patrickheckenlively/myBin/xmpsafecopy:
     	Source directory
   -target string
     	Target directory
+  -verifychunksize uint
+    	Size of the verify chunks (default 16384)
+  -verifypasses uint
+    	Number of file verify test passes (default 3)
 ```
 
 ### Example Usage
@@ -127,7 +135,7 @@ cd cmd/xmpsafecopy
 make TARGET
 ```
 
-Acceptable values for TARGET are:
+Supported values for TARGET are:
 
 * mac_arm64
 * mac_amd64
