@@ -94,7 +94,7 @@ corresponding directory on the Samba file share.  (Lightroom only
 knows about the directory on the Samba file share.)  Then I tell
 Lightroom to import metadata from the images.
 
-I wrote this utility, so I could programatically ensure that we are
+I wrote this utility, so I could programatically ensure that I am 
 only moving `.xmp` files associated with the same photo shoot.
 `xmpsafecopy` backs up any `.xmp` files present in the target
 directory.  It copies all `.xmp` files from the source.  Finally,
