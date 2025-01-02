@@ -18,10 +18,10 @@ jobs:
 #      run: ./configure
 
     - name: Install Go Toolchain
-      run: sudo apt install -y golang-go && echo "installed golang"
+      run: sudo apt install -y golang-go && echo "installed golang" && echo "Installed Go"
 
     - name: Install govunlcheck
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest && echo "Installed govuncheck"
 
 #    - name: Install govunlcheck
 #      run: go install golang.org/x/vuln/cmd/govulncheck@latest
