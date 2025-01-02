@@ -21,7 +21,7 @@ jobs:
       run: sudo apt install -y golang-go && echo "installed golang"
 
     - name: Install govunlcheck
-      run: export GOROOT=$(env | grep GOROOT | cut -d '=' -f 1) && go install golang.org/x/vuln/cmd/govulncheck@latest
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
 #    - name: Install govunlcheck
 #      run: go install golang.org/x/vuln/cmd/govulncheck@latest
