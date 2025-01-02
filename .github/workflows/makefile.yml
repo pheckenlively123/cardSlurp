@@ -20,8 +20,8 @@ jobs:
     - name: Install Go Toolchain
       run: sudo apt install -y golang-go && echo "installed golang"
 
-    - name: whoami
-      run: whoami && env
+    - name: Install govunlcheck
+      run: export GOROOT=$(env | grep GOROOT | cut -d '=' -f 1) && go install golang.org/x/vuln/cmd/govulncheck@latest
 
 #    - name: Install govunlcheck
 #      run: go install golang.org/x/vuln/cmd/govulncheck@latest
