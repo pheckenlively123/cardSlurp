@@ -5,32 +5,26 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-
+env:
+  GOROOT: "/opt/local/go"
+  GOPATH: "~/go"
+  PATH: "${PATH}:/opt/local/go/bin"
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-
 #    - name: configure
 #      run: ./configure
-
     - name: Install Go Toolchain
-      run: sudo apt install -y golang-go && echo "installed golang" && echo "Installed Go"
-
+      run: sudo mkdir -p /opt/local && cd /opt/local && wget https://go.dev/dl/go1.24.1.linux-amd64.tar.gz && tar zxvf go1.24.1.linux-amd64.tar.gz
     - name: Install govunlcheck
       run: go install golang.org/x/vuln/cmd/govulncheck@latest && echo "Installed govuncheck"
-
 #    - name: Install govunlcheck
 #      run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      
 #    - name: Install dependencies
 #      run: make
-
 #    - name: Run check
 #      run: make check
-
 #    - name: Run distcheck
 #      run: make distcheck
