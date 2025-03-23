@@ -8,7 +8,7 @@ on:
 env:
   GOROOT: "/opt/local/go"
   GOPATH: "~/go"
-  PATH: "${PATH}:/opt/local/go/bin"
+  PATH: "/usr/bin:/usr/sbin:/opt/local/go/bin"
 jobs:
   build:
     runs-on: ubuntu-latest
