@@ -22,7 +22,7 @@ jobs:
     - name: Install govunlcheck
       run: go install golang.org/x/vuln/cmd/govulncheck@latest && echo "Installed govuncheck"
     - name: Install golangci-lint
-      run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@
+      run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 #    - name: Install govunlcheck
 #      run: go install golang.org/x/vuln/cmd/govulncheck@latest
 #    - name: Install dependencies
