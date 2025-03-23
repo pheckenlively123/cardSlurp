@@ -7,7 +7,7 @@ on:
     branches: [ "master" ]
 env:
   GOROOT: "/opt/local/go"
-  GOPATH: "~/go"
+  GOPATH: "/home/runner/go"
   PATH: "/usr/bin:/usr/sbin:/opt/local/go/bin"
 jobs:
   build:
