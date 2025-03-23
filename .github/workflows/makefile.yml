@@ -18,7 +18,7 @@ jobs:
 #    - name: configure
 #      run: ./configure
     - name: Install Go Toolchain
-      run: sudo mkdir -p /opt/local && cd /opt/local && wget https://go.dev/dl/$GOVERSION && && tar zxvf $GOVERSION
+      run: sudo mkdir -p /opt/local && cd /opt/local && wget https://go.dev/dl/${GOVERSION} && tar zxvf ${GOVERSION}
     - name: Install govunlcheck
       run: go install golang.org/x/vuln/cmd/govulncheck@latest && echo "Installed govuncheck"
 #    - name: Install govunlcheck
