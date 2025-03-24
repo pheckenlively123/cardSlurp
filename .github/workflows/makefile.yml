@@ -25,6 +25,8 @@ jobs:
       run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     - name: Scan
       run: cd cmd/cardslurp && make scan
+    - name: Lint 
+      run: cd cmd/cardslurp && make lint
     #- name: CardSlurp Test
       #run: cd cmd/cardslurp && make test
 #    - name: Install govunlcheck
