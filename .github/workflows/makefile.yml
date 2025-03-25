@@ -24,25 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-#    - name: configure
-#      run: ./configure
-    - name: Install Go Toolchain
-      run: sudo mkdir -p /opt/local && cd /opt/local && wget https://go.dev/dl/${GOVERSION} && tar zxvf ${GOVERSION}
-    - name: Install govunlcheck
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest && echo "Installed govuncheck"
-    - name: Install golangci-lint
-      run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-    - name: Scan
-      run: cd cmd/cardslurp && make scan && echo "scan OK"
-    - name: Lint 
-      run: cd cmd/cardslurp && make lint && echo "lint OK"
-    #- name: CardSlurp Test
-      #run: cd cmd/cardslurp && make test
-#    - name: Install govunlcheck
-#      run: go install golang.org/x/vuln/cmd/govulncheck@latest
-#    - name: Install dependencies
-#      run: make
-#    - name: Run check
-#      run: make check
-#    - name: Run distcheck
-#      run: make distcheck
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24.1'
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...
