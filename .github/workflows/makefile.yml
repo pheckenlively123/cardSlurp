@@ -11,6 +11,15 @@ env:
   PATH: "/opt/local/go/bin:/usr/bin:/usr/sbin:/home/runner/go/bin"
   GOVERSION: "go1.24.1.linux-amd64.tar.gz"
 jobs:
+  govulncheck_job:
+    runs-on: ubuntu-latest
+    name: Run govulncheck
+    steps:
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+           go-version-input: 1.24.1
+           go-package: ./...
   build:
     runs-on: ubuntu-latest
     steps:

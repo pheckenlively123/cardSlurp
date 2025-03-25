@@ -20,7 +20,7 @@ lint:
 
 # See this page for install instructions for govulncheck: https://go.dev/blog/vuln
 scan:
-	govulncheck ./...
+	cd ../.. && govulncheck ./... && cd cmd/cardslurp
 
 all: cardslurp
 
