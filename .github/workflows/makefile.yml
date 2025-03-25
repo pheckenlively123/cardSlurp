@@ -5,11 +5,11 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-env:
+#env:
   #GOROOT: "/opt/local/go"
-  GOPATH: "/home/runner/go"
-  PATH: "/opt/local/go/bin:/usr/bin:/usr/sbin:/home/runner/go/bin"
-  GOVERSION: "go1.24.1.linux-amd64.tar.gz"
+  #GOPATH: "/home/runner/go"
+  #PATH: "/opt/local/go/bin:/usr/bin:/usr/sbin:/home/runner/go/bin"
+  #GOVERSION: "go1.24.1.linux-amd64.tar.gz"
 jobs:
   govulncheck_job:
     runs-on: ubuntu-latest
