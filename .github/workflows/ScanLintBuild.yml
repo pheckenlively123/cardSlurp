@@ -42,5 +42,7 @@ jobs:
         go-version: '1.24.1'
     - name: Build
       run: go build -v ./...
+    - name: Capture ENV
+      run: env
     - name: Test
       run: go test -v ./...
