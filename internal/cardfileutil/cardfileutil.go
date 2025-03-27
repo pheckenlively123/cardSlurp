@@ -20,6 +20,13 @@ func NewCardFileUtil(transBufferSize uint64, verificationPasses uint64) *CardFil
 	}
 }
 
+func closeDefer(fi *os.File, errorFile string) {
+	err := fi.Close()
+	if err != nil {
+		fmt.Printf("error closing %s: %s\n", errorFile, err.Error())
+	}
+}
+
 // IsFileSame - Do a byte by byte comparison of the two files.
 func (c *CardFileUtil) IsFileSame(fromFile string, toFile string) (bool, error) {
 
@@ -31,13 +38,13 @@ func (c *CardFileUtil) IsFileSame(fromFile string, toFile string) (bool, error) 
 	if err != nil {
 		return false, errors.New("Error opening: " + fromFile)
 	}
-	defer from.Close()
+	defer closeDefer(from, fromFile)
 
 	to, err := os.Open(toFile)
 	if err != nil {
 		return false, errors.New("Error opening: " + toFile)
 	}
-	defer to.Close()
+	defer closeDefer(to, toFile)
 
 	nibFrom := make([]byte, c.transBufferSize)
 	nibTo := make([]byte, c.transBufferSize)
@@ -99,13 +106,13 @@ func (c *CardFileUtil) CardFileCopy(fromFile string, toFile string) error {
 	if err != nil {
 		return fmt.Errorf("error opening from file: %w", err)
 	}
-	defer from.Close()
+	defer closeDefer(from, fromFile)
 
 	to, err := os.OpenFile(toFile, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return fmt.Errorf("error opening to file: %w", err)
 	}
-	defer to.Close()
+	defer closeDefer(to, toFile)
 
 	_, err = io.Copy(to, from)
 	if err != nil {
