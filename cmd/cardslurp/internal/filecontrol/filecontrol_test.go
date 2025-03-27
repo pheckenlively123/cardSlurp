@@ -11,23 +11,6 @@ import (
 	"github.com/pheckenlively123/cardSlurp/internal/cardfileutil"
 )
 
-/*
-func TestRecurseDir(t *testing.T) {
-
-	// Base the path of the test source on the home directory variable.  That
-	// way, this test should work with other developers too.  :-P
-	homedir := os.Getenv("HOME")
-
-	foundFiles := make([]CardSlurpWork, 0)
-	fullPath := homedir + "/go/src/github.com/cardSlurp/cmd/cardslurp/internal/filecontrol/testData/source"
-	debugMode := false
-	err := recurseDir(fullPath, &foundFiles, &debugMode)
-	if err != nil {
-		t.Fatal("recurseDir() returned an error")
-	}
-}
-*/
-
 var (
 	errInjected = errors.New("injected error")
 )
@@ -123,5 +106,10 @@ func TestNewWorkerPool(t *testing.T) {
 		for y := range finalResults.MinorErrs {
 			fmt.Printf("%s\n", finalResults.MinorErrs[y])
 		}
+	}
+
+	err = os.RemoveAll(targetDir)
+	if err != nil {
+		t.Fatal("Error removing targetDir at the end of testing: " + err.Error() + "\n")
 	}
 }
